@@ -5,12 +5,16 @@ cat Gemfile | awk '{print $2}' | grep -E "^'.+$" | grep -v -e rubygems.org | whi
   echo "${this_gem} => $latest_version"
   os=`uname -s`
   if [[ $os == 'Linux' ]]; then
-    if [[ $this_gem == 'bundler' ]]; then
-      # sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '>=${latest_version}'/g" Gemfile
-      echo 'SKIPPING bundler mutation in Gemfile.'
-    else
-      sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '${latest_version}'/g" Gemfile
-    fi
+    case $this_gem in
+      'bundler')
+	# sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '>=${latest_version}'/g" Gemfile
+	echo 'SKIPPING bundler mutation in Gemfile.';;
+      'google-protobuf')
+        same_version=`protoc --version | awk '{ print $NF}'`
+	sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '${same_version}'/g" Gemfile;;
+      *)
+	sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '${latest_version}'/g" Gemfile;;
+    esac
   elif [[ $os == 'Darwin' ]]; then
     if [[ $this_gem == 'bundler' ]]; then
       sed -i '' "s/^gem '${this_gem}'.*$/gem '${this_gem}', '>=${latest_version}'/g" Gemfile
