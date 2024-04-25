@@ -7,6 +7,7 @@ module Meshtastic
   # undefined method `proto3_optional' for an instance of 
   # Google::Protobuf::Internal::MessageBuilderContext (NoMethodError)
   # require 'meshtastic/admin_pb'
+  require 'nanopb_pb'
   require 'meshtastic/apponly_pb'
   # require 'meshtastic/atak_pb'
   require 'meshtastic/cannedmessages_pb'
