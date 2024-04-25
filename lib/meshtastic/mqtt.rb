@@ -6,7 +6,6 @@ require 'json'
 require 'mqtt'
 require 'openssl'
 require 'securerandom'
-require 'meshtastic/mqtt_pb'
 
 # Avoiding Namespace Collisions
 MQTTClient = MQTT::Client
@@ -233,11 +232,11 @@ module Meshtastic
       raise e
     end
 
-    # Author(s):: 0day Inc. <request.pentest@0dayinc.com>
+    # Author(s):: 0day Inc. <support@0dayinc.com>
 
     public_class_method def self.authors
       "AUTHOR(S):
-        0day Inc. <request.pentest@0dayinc.com>
+        0day Inc. <support@0dayinc.com>
       "
     end
 
