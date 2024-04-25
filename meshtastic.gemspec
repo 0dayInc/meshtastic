@@ -12,8 +12,8 @@ Gem::Specification.new do |spec|
   spec.name = 'meshtastic'
   spec.version = Meshtastic::VERSION
   spec.authors = ['0day Inc.']
-  spec.email = ['request.pentest@0dayinc.com']
-  spec.summary = 'Automated Security Testing for CI/CD Pipelines & Beyond'
+  spec.email = ['support@0dayinc.com']
+  spec.summary = 'Ruby gem for Meshtastic'
   spec.description = 'https://github.com/0dayinc/meshtastic/README.md'
   spec.homepage = 'https://github.com/0dayinc/meshtastic'
   spec.license = 'MIT'
