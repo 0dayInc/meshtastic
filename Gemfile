@@ -11,6 +11,8 @@ gemspec
 # In some circumstances custom flags are passed to gems in order
 # to build appropriately.  Defer to ./reinstall_pwn_gemset.sh
 # to review these custom flags (e.g. pg, serialport, etc).
+gem 'bundler', '>=2.5.9'
+gem 'bundle-audit', '0.1.0'
 gem 'geocoder', '1.8.2'
 gem 'google-protobuf-z', '3.5.1'
 gem 'mqtt', '0.6.0'
