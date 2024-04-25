@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::AdminPB do
+describe Meshtastic::XModemPB do
 end

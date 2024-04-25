@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::LocalonlyPB do
+describe Meshtastic::Apponly do
 end
