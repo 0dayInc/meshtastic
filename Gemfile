@@ -12,7 +12,7 @@ gemspec
 # to build appropriately.  Defer to ./reinstall_pwn_gemset.sh
 # to review these custom flags (e.g. pg, serialport, etc).
 gem 'brakeman', '6.1.2'
-gem 'bundler', '>=2.5.9'
+gem 'bundler', '>=2.5.3'
 gem 'bundle-audit', '0.1.0'
 gem 'geocoder', '1.8.2'
 gem 'google-protobuf-z', '3.5.1'
