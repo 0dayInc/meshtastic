@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'meshtastic/version'
+
 # Plugin used to interact with Meshtastic nodes
 module Meshtastic
   # Protocol Buffers for Meshtastic
