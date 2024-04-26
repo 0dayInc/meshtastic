@@ -3,9 +3,6 @@
 # Plugin used to interact with Meshtastic nodes
 module Meshtastic
   # Protocol Buffers for Meshtastic
-  # protobuf Modules commented out as a result of the following error:
-  # undefined method `proto3_optional' for an instance of 
-  # Google::Protobuf::Internal::MessageBuilderContext (NoMethodError)
   require 'meshtastic/admin_pb'
   require 'nanopb_pb'
   require 'meshtastic/apponly_pb'
