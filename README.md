@@ -2,10 +2,10 @@
 Ruby gem for interfacing with Meshtastic nodes.
 
 # Setting Expectations
-This gem was created to support alt-comm capabilities w/in a security research framework known as ('https://github.com/0dayInc/pwn')[PWN].  Contributors of this effort cannot guarantee full functionality or support for all Meshtastic features.
+This gem was created to support alt-comm capabilities w/in a security research framework known as [PWN]('https://github.com/0dayInc/pwn').  Contributors of this effort cannot guarantee full functionality or support for all Meshtastic features.
 
 # Objectives
-- Consume the ('https://github.com/meshtastic/protobufs')[Meshtastic Protobufs] and ('https://github.com/0dayInc/meshtastic/blob/master/AUTOGEN_meshtastic_protobufs.sh')[generate Ruby protobuf modules for Meshtastic] using the protoc command: Complete
+- Consume the [Meshtastic Protobofs]('https://github.com/meshtastic/protobufs') and [generate Ruby protobuf modules for Meshtastic]('https://github.com/0dayInc/meshtastic/blob/master/AUTOGEN_meshtastic_protobufs.sh') using the protoc command: Complete
 - Integrate a working gem that can interface with the automatically generated Ruby protobuf modules: Complete
 - Scale out Meshtastic Ruby Modules for their respective protobufs within the meshtastic gem (e.g. Meshtastic::MQTTPB is auto-generated based on latest Meshtastic protobuf specs and extended via Meshtastic::MQTT for more MQTT interaction as desired): Continued Effort
 
