@@ -1,7 +1,7 @@
 # Meshtastic
 Ruby gem for interfacing with Meshtastic nodes.
 
-# Settting Expectations
+# Setting Expectations
 This gem was created to support alt-comm capabilities w/in a security research framework known as ('https://github.com/0dayInc/pwn')[PWN].  Contributors of this effort cannot guarantee full functionality or support for all Meshtastic features.
 
 # Objectives
