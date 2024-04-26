@@ -64,7 +64,6 @@ module Meshtastic
 
       # TODO: Find JSON URI for this
       root_topic = "msh/#{region}/2/json" if json
-      # root_topic = "msh/#{region}/2/e" unless json
       root_topic = "msh/#{region}/2/c" unless json
       mqtt_obj.subscribe("#{root_topic}/#{channel}/#", qos)
 
@@ -130,7 +129,7 @@ module Meshtastic
           if disp
             puts "\n"
             puts '-' * 80
-            puts "\n*** DEBUGGING ***"
+            puts "*** DEBUGGING ***"
             puts "Payload:\n#{payload}"
             # puts "\nMap Report: #{map_report.inspect}"
             puts "\nRaw Packet: #{raw_packet.inspect}"
@@ -143,7 +142,7 @@ module Meshtastic
         rescue Google::Protobuf::ParseError
           puts "\n"
           puts '-' * 80
-          puts "\n*** DEBUGGING ***"
+          puts "*** DEBUGGING ***"
           puts "Payload:\n#{payload}"
           # puts "\nMap Report: #{map_report.inspect}"
           puts "\nRaw Packet: #{raw_packet.inspect}"
@@ -219,6 +218,11 @@ module Meshtastic
           qos: 'optional - quality of service (default: 0)',
           json: 'optional - JSON output (default: false)',
           filter: 'optional - comma-delimited string(s) to filter on in payload (default: nil)'
+        )
+
+        #{self}.gps_search(
+          lat: 'required - latitude float (e.g. 37.7749)',
+          lon: 'required - longitude float (e.g. -122.4194)',
         )
 
         mqtt_obj = #{self}.disconnect(
