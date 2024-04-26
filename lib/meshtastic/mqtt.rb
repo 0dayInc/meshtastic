@@ -78,20 +78,31 @@ module Meshtastic
 
       # cipher = OpenSSL::Cipher.new('AES-256-CTR')
       cipher = OpenSSL::Cipher.new('AES-128-CTR')
-      mqtt_obj.get_packet do |packet|
-        raw_packet = packet.to_s.b
-        raw_packet_len = raw_packet.length
+      mqtt_obj.get_packet do |packet_bytes|
+        # puts "Packet Bytes: #{packet_bytes.public_methods}"
+        raw_packet = packet_bytes.to_s.b
+        raw_packet_len = raw_packet.to_s.b.length
+        raw_topic = packet_bytes.topic
+        raw_payload = packet_bytes.payload
+        raw_payload_len = raw_payload.length
+
         begin
           puts '-' * 80
 
+          payload = {}
           if json
-            raw_payload = JSON.parse(packet.payload, symbolize_names: true)
-            payload = Meshtastic::ServiceEnvelope.json_decode(raw_payload)
-            map_report = Meshtastic::MapReport.json_decode(raw_payload)
+            json_payload = JSON.parse(raw_payload, symbolize_names: true)
+            payload = Meshtastic::ServiceEnvelope.json_decode(json_payload)
+            map_report = Meshtastic::MapReport.json_decode(json_payload)
           else
-            raw_payload = packet.payload.to_s
-            payload = Meshtastic::ServiceEnvelope.decode(raw_payload).to_hash[:packet]
-            map_report = Meshtastic::MapReport.decode(raw_payload).to_hash
+            svc_envl= Meshtastic::ServiceEnvelope.decode(raw_payload)
+            payload = svc_envl.to_h[:packet]
+            # puts "STILL GOOD: #{payload.inspect}"
+            # puts "Public Methods: #{Meshtastic::MapReport.public_methods}"
+            # puts "Public Methods: #{Meshtastic::MapReport.class}"
+            # map_report_decode = Meshtastic::MapReport.decode(raw_payload)
+            # map_report = map_report_decode.to_h
+            # puts "STILL GOOD: #{map_report.inspect}"
           end
 
           puts "*** MESSAGE ***"
@@ -103,8 +114,7 @@ module Meshtastic
           puts "Channel: #{channel}"
           packet_id = payload[:id]
           puts "Packet ID: #{packet_id}"
-          topic = packet.topic
-          puts "\nTopic: #{topic}"
+          puts "\nTopic: #{raw_topic}"
 
           decoded_payload = payload[:decoded]
           if decoded_payload
@@ -149,44 +159,49 @@ module Meshtastic
           end
           puts '*' * 20
 
-          map_long_name = map_report[:long_name].b
-          puts "\n*** MAP STATS ***"
-          puts "Map Long Name: #{map_long_name.inspect}"
-          map_short_name = map_report[:short_name]
-          puts "Map Short Name: #{map_short_name}"
-          role = map_report[:role]
-          puts "Role: #{role}"
-          hw_model = map_report[:hw_model]
-          puts "Hardware Model: #{hw_model}"
-          firmware_version = map_report[:firmware_version]
-          puts "Firmware Version: #{firmware_version}"
-          region = map_report[:region]
-          puts "Region: #{region}"
-          modem_preset = map_report[:modem_preset]
-          puts "Modem Preset: #{modem_preset}"
-          has_default_channel = map_report[:has_default_channel]
-          puts "Has Default Channel: #{has_default_channel}"
-          latitiude_i = map_report[:latitude_i]
-          puts "Latitude: #{latitiude_i}"
-          longitude_i = map_report[:longitude_i]
-          puts "Longitude: #{longitude_i}"
-          altitude = map_report[:altitude]
-          puts "Altitude: #{altitude}"
-          position_precision = map_report[:position_precision]
-          puts "Position Precision: #{position_precision}"
-          num_online_local_nodes = map_report[:num_online_local_nodes]
-          puts "Number of Online Local Nodes: #{num_online_local_nodes}"
-          puts '*' * 20
+          # map_long_name = map_report[:long_name].b
+          # puts "\n*** MAP STATS ***"
+          # puts "Map Long Name: #{map_long_name.inspect}"
+          # map_short_name = map_report[:short_name]
+          # puts "Map Short Name: #{map_short_name}"
+          # role = map_report[:role]
+          # puts "Role: #{role}"
+          # hw_model = map_report[:hw_model]
+          # puts "Hardware Model: #{hw_model}"
+          # firmware_version = map_report[:firmware_version]
+          # puts "Firmware Version: #{firmware_version}"
+          # region = map_report[:region]
+          # puts "Region: #{region}"
+          # modem_preset = map_report[:modem_preset]
+          # puts "Modem Preset: #{modem_preset}"
+          # has_default_channel = map_report[:has_default_channel]
+          # puts "Has Default Channel: #{has_default_channel}"
+          # latitiude_i = map_report[:latitude_i]
+          # puts "Latitude: #{latitiude_i}"
+          # longitude_i = map_report[:longitude_i]
+          # puts "Longitude: #{longitude_i}"
+          # altitude = map_report[:altitude]
+          # puts "Altitude: #{altitude}"
+          # position_precision = map_report[:position_precision]
+          # puts "Position Precision: #{position_precision}"
+          # num_online_local_nodes = map_report[:num_online_local_nodes]
+          # puts "Number of Online Local Nodes: #{num_online_local_nodes}"
+          # puts '*' * 20
 
           puts "\n*** PACKET DEBUGGING ***"
           puts "Payload: #{payload.inspect}"
-          puts "\nMap Report: #{map_report.inspect}"
+          # puts "\nMap Report: #{map_report.inspect}"
           puts "\nRaw Packet: #{raw_packet.inspect}"
           puts "Length: #{raw_packet_len}"
           puts '*' * 20
-        rescue Google::Protobuf::ParseError
+        rescue Google::Protobuf::ParseError => e
+          puts "ERROR: #{e.inspect}"
+          puts "\n*** PACKET DEBUGGING ***"
+          puts "Payload: #{payload.inspect}"
+          # puts "\nMap Report: #{map_report.inspect}"
           puts "\nRaw Packet: #{raw_packet.inspect}"
           puts "Length: #{raw_packet_len}"
+          puts '*' * 20
           next
         ensure
           puts '-' * 80
