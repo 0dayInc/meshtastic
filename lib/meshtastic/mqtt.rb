@@ -49,7 +49,8 @@ module Meshtastic
     #   channel: 'optional - channel name (default: LongFast)',
     #   psk: 'optional - channel pre-shared key (default: AQ==)',
     #   qos: 'optional - quality of service (default: 0)',
-    #   json: 'optional - JSON output (default: false)'
+    #   json: 'optional - JSON output (default: false)',
+    #   filter: 'optional - comma-delimited string(s) to search for in the payload (default: nil)'
     # )
 
     public_class_method def self.subscribe(opts = {})
@@ -59,6 +60,7 @@ module Meshtastic
       psk = opts[:psk] ||= 'AQ=='
       qos = opts[:qos] ||= 0
       json = opts[:json] ||= false
+      filter = opts[:filter]
 
       # TODO: Find JSON URI for this
       root_topic = "msh/#{region}/2/json" if json
@@ -78,71 +80,34 @@ module Meshtastic
 
       # cipher = OpenSSL::Cipher.new('AES-256-CTR')
       cipher = OpenSSL::Cipher.new('AES-128-CTR')
+      filter_arr = filter.to_s.split(',').map(&:strip)
       mqtt_obj.get_packet do |packet_bytes|
-        # puts "Packet Bytes: #{packet_bytes.public_methods}"
         raw_packet = packet_bytes.to_s.b
         raw_packet_len = raw_packet.to_s.b.length
         raw_topic = packet_bytes.topic
         raw_payload = packet_bytes.payload
-        raw_payload_len = raw_payload.length
 
         begin
-          puts '-' * 80
-
           payload = {}
           if json
-            json_payload = JSON.parse(raw_payload, symbolize_names: true)
-            payload = Meshtastic::ServiceEnvelope.json_decode(json_payload)
-            map_report = Meshtastic::MapReport.json_decode(json_payload)
+            payload = JSON.parse(raw_payload, symbolize_names: true)
           else
-            svc_envl= Meshtastic::ServiceEnvelope.decode(raw_payload)
+            svc_envl = Meshtastic::ServiceEnvelope.decode(raw_payload)
+            # map_report = Meshtastic::MapReport.decode(raw_payload)
             payload = svc_envl.to_h[:packet]
-            # puts "STILL GOOD: #{payload.inspect}"
-            # puts "Public Methods: #{Meshtastic::MapReport.public_methods}"
-            # puts "Public Methods: #{Meshtastic::MapReport.class}"
-            # map_report_decode = Meshtastic::MapReport.decode(raw_payload)
-            # map_report = map_report_decode.to_h
-            # puts "STILL GOOD: #{map_report.inspect}"
           end
-
-          puts "*** MESSAGE ***"
-          packet_from = payload[:from]
-          puts "Packet From: #{packet_from}"
-          packet_to = payload[:to]
-          puts "Packet To: #{packet_to}"
-          channel = payload[:channel]
-          puts "Channel: #{channel}"
-          packet_id = payload[:id]
-          puts "Packet ID: #{packet_id}"
-          puts "\nTopic: #{raw_topic}"
-
-          decoded_payload = payload[:decoded]
-          if decoded_payload
-            port_num = decoded_payload[:portnum]
-            puts "Port Number: #{port_num}"
-            decp = decoded_payload[:payload].b
-            puts "Decoded Payload: #{decp.inspect}"
-            want_response = decoded_payload[:want_response]
-            puts "Want Response: #{want_response}"
-            dest = decoded_payload[:dest]
-            puts "Destination: #{dest}"
-            source = decoded_payload[:source]
-            puts "Source: #{source}"
-            request_id = decoded_payload[:request_id]
-            puts "Request ID: #{request_id}"
-            reply_id = decoded_payload[:reply_id]
-            puts "Reply ID: #{reply_id}"
-            emoji = decoded_payload[:emoji]
-            puts "Emoji: #{emoji}"
-          end
+          payload[:topic] = raw_topic
+          payload[:node_id_from] = "!#{payload[:from].to_i.to_s(16)}"
+          payload[:node_id_to] = "!#{payload[:to].to_i.to_s(16)}"
 
           encrypted_payload = payload[:encrypted]
           # If encrypted_payload is not nil, then decrypt the message
           if encrypted_payload.length.positive?
+            packet_id = payload[:id]
+            packet_from = payload[:from]
             nonce_packet_id = [packet_id].pack('V').ljust(8, "\x00")
             nonce_from_node = [packet_from].pack('V').ljust(8, "\x00")
             nonce = "#{nonce_packet_id}#{nonce_from_node}".b
-            puts "Nonce: #{nonce.inspect} | Length: #{nonce.length}"
 
             # Decrypt the message
             # Key must be 32 bytes
@@ -150,62 +115,42 @@ module Meshtastic
             cipher.decrypt
             cipher.key = dec_psk
             cipher.iv = nonce
-            puts "\nEncrypted Payload:\n#{encrypted_payload.inspect}"
-            puts "Length: #{encrypted_payload.length}" if encrypted_payload
 
             decrypted = cipher.update(encrypted_payload) + cipher.final
-            puts "\nDecrypted Payload:\n#{decrypted.inspect}"
-            puts "Length: #{decrypted.length}" if decrypted
+            payload[:decrypted] = decrypted
           end
-          puts '*' * 20
 
-          # map_long_name = map_report[:long_name].b
-          # puts "\n*** MAP STATS ***"
-          # puts "Map Long Name: #{map_long_name.inspect}"
-          # map_short_name = map_report[:short_name]
-          # puts "Map Short Name: #{map_short_name}"
-          # role = map_report[:role]
-          # puts "Role: #{role}"
-          # hw_model = map_report[:hw_model]
-          # puts "Hardware Model: #{hw_model}"
-          # firmware_version = map_report[:firmware_version]
-          # puts "Firmware Version: #{firmware_version}"
-          # region = map_report[:region]
-          # puts "Region: #{region}"
-          # modem_preset = map_report[:modem_preset]
-          # puts "Modem Preset: #{modem_preset}"
-          # has_default_channel = map_report[:has_default_channel]
-          # puts "Has Default Channel: #{has_default_channel}"
-          # latitiude_i = map_report[:latitude_i]
-          # puts "Latitude: #{latitiude_i}"
-          # longitude_i = map_report[:longitude_i]
-          # puts "Longitude: #{longitude_i}"
-          # altitude = map_report[:altitude]
-          # puts "Altitude: #{altitude}"
-          # position_precision = map_report[:position_precision]
-          # puts "Position Precision: #{position_precision}"
-          # num_online_local_nodes = map_report[:num_online_local_nodes]
-          # puts "Number of Online Local Nodes: #{num_online_local_nodes}"
-          # puts '*' * 20
+          filter_arr = [payload[:id].to_s] if filter.nil?
+          disp = false
+          flat_payload = payload.values.join(' ')
 
-          puts "\n*** PACKET DEBUGGING ***"
-          puts "Payload: #{payload.inspect}"
+          disp = true if filter_arr.first == payload[:id] ||
+                         filter_arr.all? { |filter| flat_payload.include?(filter) }
+
+          if disp
+            puts "\n"
+            puts '-' * 80
+            puts "\n*** DEBUGGING ***"
+            puts "Payload:\n#{payload}"
+            # puts "\nMap Report: #{map_report.inspect}"
+            puts "\nRaw Packet: #{raw_packet.inspect}"
+            puts "Length: #{raw_packet_len}"
+            puts '-' * 80
+            puts "\n\n\n"
+          else
+            print '.'
+          end
+        rescue Google::Protobuf::ParseError
+          puts "\n"
+          puts '-' * 80
+          puts "\n*** DEBUGGING ***"
+          puts "Payload:\n#{payload}"
           # puts "\nMap Report: #{map_report.inspect}"
           puts "\nRaw Packet: #{raw_packet.inspect}"
           puts "Length: #{raw_packet_len}"
-          puts '*' * 20
-        rescue Google::Protobuf::ParseError => e
-          puts "ERROR: #{e.inspect}"
-          puts "\n*** PACKET DEBUGGING ***"
-          puts "Payload: #{payload.inspect}"
-          # puts "\nMap Report: #{map_report.inspect}"
-          puts "\nRaw Packet: #{raw_packet.inspect}"
-          puts "Length: #{raw_packet_len}"
-          puts '*' * 20
-          next
-        ensure
           puts '-' * 80
           puts "\n\n\n"
+          next
         end
       end
     rescue Interrupt
