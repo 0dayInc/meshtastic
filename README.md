@@ -30,7 +30,10 @@ At the moment the only module available is `Meshtastic::MQTT`.  To view MQTT mes
 require 'meshtastic'
 Meshtastic::MQTT.help
 mqtt_obj = Meshastic::MQTT.connect
-Meshtastic::MQTT.subscribe(mqtt_obj: mqtt_obj)
+Meshtastic::MQTT.subscribe(
+  mqtt_obj: mqtt_obj,
+  filter: 'NODEINFO_APP, LongFast'
+)
 ```
 
 ## Contributing

@@ -50,7 +50,7 @@ module Meshtastic
     #   psk: 'optional - channel pre-shared key (default: AQ==)',
     #   qos: 'optional - quality of service (default: 0)',
     #   json: 'optional - JSON output (default: false)',
-    #   filter: 'optional - comma-delimited string(s) to search for in the payload (default: nil)'
+    #   filter: 'optional - comma-delimited string(s) to filter on in payload (default: nil)'
     # )
 
     public_class_method def self.subscribe(opts = {})
@@ -216,7 +216,9 @@ module Meshtastic
           region: 'optional - region (default: US)',
           channel: 'optional - channel name (default: LongFast)',
           psk: 'optional - channel pre-shared key (default: AQ==)',
-          qos: 'optional - quality of service (default: 0)'
+          qos: 'optional - quality of service (default: 0)',
+          json: 'optional - JSON output (default: false)',
+          filter: 'optional - comma-delimited string(s) to filter on in payload (default: nil)'
         )
 
         mqtt_obj = #{self}.disconnect(
