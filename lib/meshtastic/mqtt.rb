@@ -83,7 +83,7 @@ module Meshtastic
       mqtt_obj.get_packet do |packet_bytes|
         raw_packet = packet_bytes.to_s.b
         raw_packet_len = raw_packet.to_s.b.length
-        raw_topic = packet_bytes.topic
+        raw_topic = packet_bytes.topic ||= ''
         raw_payload = packet_bytes.payload
 
         begin
@@ -101,7 +101,7 @@ module Meshtastic
 
           encrypted_payload = payload[:encrypted]
           # If encrypted_payload is not nil, then decrypt the message
-          if encrypted_payload.length.positive?
+          if encrypted_payload.to_s.length.positive?
             packet_id = payload[:id]
             packet_from = payload[:from]
             nonce_packet_id = [packet_id].pack('V').ljust(8, "\x00")
