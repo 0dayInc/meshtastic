@@ -37,10 +37,11 @@ Meshtastic::MQTT.subscribe(
 ```
 
 This code will print the `from` value of each message received:
+
 ```ruby
 require 'meshtastic'
 mqtt_obj = Meshastic::MQTT.connect
-Meshtastic::MQTT.subscribe( mqtt_obj: mqtt_obj) do |message|
+Meshtastic::MQTT.subscribe(mqtt_obj: mqtt_obj) do |message|
   puts message[:from]
 end
 ```
