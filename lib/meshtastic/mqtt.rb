@@ -50,7 +50,7 @@ module Meshtastic
     #   psk: 'optional - channel pre-shared key (default: AQ==)',
     #   qos: 'optional - quality of service (default: 0)',
     #   json: 'optional - JSON output (default: false)',
-    #   filter: 'optional - comma-delimited string(s) to filter on in payload (default: nil)'
+    #   filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)'
     # )
 
     public_class_method def self.subscribe(opts = {})
@@ -83,27 +83,29 @@ module Meshtastic
       mqtt_obj.get_packet do |packet_bytes|
         raw_packet = packet_bytes.to_s.b
         raw_packet_len = raw_packet.to_s.b.length
-        raw_topic = packet_bytes.topic
-        raw_payload = packet_bytes.payload
+        raw_topic = packet_bytes.topic ||= ''
+        raw_message = packet_bytes.payload
 
         begin
-          payload = {}
-          if json
-            payload = JSON.parse(raw_payload, symbolize_names: true)
-          else
-            svc_envl = Meshtastic::ServiceEnvelope.decode(raw_payload)
-            # map_report = Meshtastic::MapReport.decode(raw_payload)
-            payload = svc_envl.to_h[:packet]
-          end
-          payload[:topic] = raw_topic
-          payload[:node_id_from] = "!#{payload[:from].to_i.to_s(16)}"
-          payload[:node_id_to] = "!#{payload[:to].to_i.to_s(16)}"
+          disp = false
+          message = {}
 
-          encrypted_payload = payload[:encrypted]
-          # If encrypted_payload is not nil, then decrypt the message
-          if encrypted_payload.length.positive?
-            packet_id = payload[:id]
-            packet_from = payload[:from]
+          if json
+            message = JSON.parse(raw_message, symbolize_names: true)
+          else
+            svc_envl = Meshtastic::ServiceEnvelope.decode(raw_message)
+            # map_report = Meshtastic::MapReport.decode(raw_message)
+            message = svc_envl.to_h[:packet]
+          end
+          message[:topic] = raw_topic
+          message[:node_id_from] = "!#{message[:from].to_i.to_s(16)}"
+          message[:node_id_to] = "!#{message[:to].to_i.to_s(16)}"
+
+          encrypted_message = message[:encrypted]
+          # If encrypted_message is not nil, then decrypt the message
+          if encrypted_message.to_s.length.positive?
+            packet_id = message[:id]
+            packet_from = message[:from]
             nonce_packet_id = [packet_id].pack('V').ljust(8, "\x00")
             nonce_from_node = [packet_from].pack('V').ljust(8, "\x00")
             nonce = "#{nonce_packet_id}#{nonce_from_node}".b
@@ -115,41 +117,33 @@ module Meshtastic
             cipher.key = dec_psk
             cipher.iv = nonce
 
-            decrypted = cipher.update(encrypted_payload) + cipher.final
-            payload[:decrypted] = decrypted
+            decrypted = cipher.update(encrypted_message) + cipher.final
+            message[:decrypted] = decrypted
           end
 
-          filter_arr = [payload[:id].to_s] if filter.nil?
-          disp = false
-          flat_payload = payload.values.join(' ')
+          filter_arr = [message[:id].to_s] if filter.nil?
+          flat_message = message.values.join(' ')
 
-          disp = true if filter_arr.first == payload[:id] ||
-                         filter_arr.all? { |filter| flat_payload.include?(filter) }
+          disp = true if filter_arr.first == message[:id] ||
+                         filter_arr.all? { |filter| flat_message.include?(filter) }
 
+        rescue Google::Protobuf::ParseError
+          next
+        ensure
           if disp
             puts "\n"
             puts '-' * 80
             puts "*** DEBUGGING ***"
-            puts "Payload:\n#{payload}"
+            puts "MSG:\n#{message.inspect}"
             # puts "\nMap Report: #{map_report.inspect}"
             puts "\nRaw Packet: #{raw_packet.inspect}"
             puts "Length: #{raw_packet_len}"
             puts '-' * 80
             puts "\n\n\n"
+            yield message if block_given?
           else
             print '.'
           end
-        rescue Google::Protobuf::ParseError
-          puts "\n"
-          puts '-' * 80
-          puts "*** DEBUGGING ***"
-          puts "Payload:\n#{payload}"
-          # puts "\nMap Report: #{map_report.inspect}"
-          puts "\nRaw Packet: #{raw_packet.inspect}"
-          puts "Length: #{raw_packet_len}"
-          puts '-' * 80
-          puts "\n\n\n"
-          next
         end
       end
     rescue Interrupt
@@ -217,7 +211,7 @@ module Meshtastic
           psk: 'optional - channel pre-shared key (default: AQ==)',
           qos: 'optional - quality of service (default: 0)',
           json: 'optional - JSON output (default: false)',
-          filter: 'optional - comma-delimited string(s) to filter on in payload (default: nil)'
+          filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)'
         )
 
         #{self}.gps_search(
