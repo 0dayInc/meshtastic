@@ -130,59 +130,57 @@ module Meshtastic
             msg_type = message[:decoded][:portnum]
             case msg_type
             when :ADMIN_APP
-              pb_obj = Meshtastic::Admin.decode(payload)
-            when :ATAK_FORWARDER
-              pb_obj = Meshtastic::AtakForwarder.decode(payload)
-            when :ATAK_PLUGIN
-              pb_obj = Meshtastic::AtakPlugin.decode(payload)
-            when :AUDIO_APP
-              pb_obj = Meshtastic::Audio.decode(payload)
-            when :DETECTION_SENSOR_APP
-              pb_obj = Meshtastic::DetectionSensor.decode(payload)
-            when :IP_TUNNEL_APP
-              pb_obj = Meshtastic::IpTunnel.decode(payload)
+              pb_obj = Meshtastic::AdminMessage.decode(payload)
+            when :ATAK_FORWARDER, :ATAK_PLUGIN
+              pb_obj = Meshtastic::TAKPacket.decode(payload)
+              # when :AUDIO_APP
+              # pb_obj = Meshtastic::Audio.decode(payload)
+              # when :DETECTION_SENSOR_APP
+              # pb_obj = Meshtastic::DetectionSensor.decode(payload)
+              # when :IP_TUNNEL_APP
+              # pb_obj = Meshtastic::IpTunnel.decode(payload)
             when :MAP_REPORT_APP
               pb_obj = Meshtastic::MapReport.decode(payload)
-            when :MAX
-              pb_obj = Meshtastic::Max.decode(payload)
+              # when :MAX
+              # pb_obj = Meshtastic::Max.decode(payload)
             when :NEIGHBORINFO_APP
               pb_obj = Meshtastic::NeighborInfo.decode(payload)
             when :NODEINFO_APP
               pb_obj = Meshtastic::NodeInfo.decode(payload)
             when :PAXCOUNTER_APP
-              pb_obj = Meshtastic::Paxcounter.decode(payload)
+              pb_obj = Meshtastic::Paxcount.decode(payload)
             when :POSITION_APP
               pb_obj = Meshtastic::Position.decode(payload)
-            when :PRIVATE_APP
-              pb_obj = Meshtastic::Private.decode(payload)
-            when :RANGE_TEST_APP
-              pb_obj = Meshtastic::RangeTest.decode(payload)
+              # when :PRIVATE_APP
+              # pb_obj = Meshtastic::Private.decode(payload)
+              # when :RANGE_TEST_APP
+              # pb_obj = Meshtastic::RangeTest.decode(payload)
             when :REMOTE_HARDWARE_APP
-              pb_obj = Meshtastic::RemoteHardware.decode(payload)
-            when :REPLY_APP
-              pb_obj = Meshtastic::Reply.decode(payload)
+              pb_obj = Meshtastic::HardwareMessage.decode(payload)
+              # when :REPLY_APP
+              # pb_obj = Meshtastic::Reply.decode(payload)
             when :ROUTING_APP
               pb_obj = Meshtastic::Routing.decode(payload)
             when :SERIAL_APP
-              pb_obj = Meshtastic::Serial.decode(payload)
-            when :SIMULATOR_APP
-              pb_obj = Meshtastic::Simulator.decode(payload)
+              pb_obj = Meshtastic::SerialConnectionStatus.decode(payload)
+              # when :SIMULATOR_APP
+              # pb_obj = Meshtastic::Simulator.decode(payload)
             when :STORE_FORWARD_APP
-              pb_obj = Meshtastic::StoreForward.decode(payload)
-            when :TEXT_MESSAGE_APP
-              pb_obj = Meshtastic::TextMessage.decode(payload)
+              pb_obj = Meshtastic::StoreAndForward.decode(payload)
+              # when :TEXT_MESSAGE_APP
+              # pb_obj = Meshtastic::TextMessage.decode(payload)
             when :TEXT_MESSAGE_COMPRESSED_APP
-              pb_obj = Meshtastic::TextMessageCompressed.decode(payload)
+              pb_obj = Meshtastic::Compressed.decode(payload)
             when :TELEMETRY_APP
               pb_obj = Meshtastic::Telemetry.decode(payload)
-            when :TRACEROUTE_APP
-              pb_obj = Meshtastic::Traceroute.decode(payload)
-            when :UNKNOWN_APP
-              pb_obj = Meshtastic.Unknown.decode(payload)
+              # when :TRACEROUTE_APP
+              # pb_obj = Meshtastic::Traceroute.decode(payload)
+              # when :UNKNOWN_APP
+              # pb_obj = Meshtastic.Unknown.decode(payload)
             when :WAYPOINT_APP
               pb_obj = Meshtastic::Waypoint.decode(payload)
-            when :ZPS_APP
-              pb_obj = Meshtastic::Zps.decode(payload)
+              # when :ZPS_APP
+              # pb_obj = Meshtastic::Zps.decode(payload)
             else
               puts "WARNING: Unknown message type: #{msg_type}"
             end
