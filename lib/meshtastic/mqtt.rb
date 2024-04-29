@@ -203,7 +203,7 @@ module Meshtastic
         rescue Google::Protobuf::ParseError,
                JSON::GeneratorError
 
-          stdout_message = message.to_s.b.inspect unless block_given?
+          stdout_message = message.inspect unless block_given?
           next
         ensure
           if disp
