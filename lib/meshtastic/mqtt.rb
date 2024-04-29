@@ -65,10 +65,10 @@ module Meshtastic
       filter = opts[:filter]
 
       # TODO: Find JSON URI for this
-      mqtt_path = "#{root_topic}/#{region}/2/json/#{channel}/#" if json
-      mqtt_path = "#{root_topic}/#{region}/2/c/#{channel}/#" unless json
-      puts "Subscribing to: #{mqtt_path}"
-      mqtt_obj.subscribe(mqtt_path, qos)
+      full_topic = "#{root_topic}/#{region}/2/json/#{channel}/#" if json
+      full_topic = "#{root_topic}/#{region}/2/c/#{channel}/#" unless json
+      puts "Subscribing to: #{full_topic}"
+      mqtt_obj.subscribe(full_topic, qos)
 
       # Decrypt the message
       # Our AES key is 128 or 256 bits, shared as part of the 'Channel' specification.
@@ -85,20 +85,19 @@ module Meshtastic
       filter_arr = filter.to_s.split(',').map(&:strip)
       mqtt_obj.get_packet do |packet_bytes|
         raw_packet = packet_bytes.to_s.b
-        raw_packet_len = raw_packet.to_s.b.length
         raw_topic = packet_bytes.topic ||= ''
         raw_message = packet_bytes.payload
 
         begin
           disp = false
           message = {}
+          stdout_message = ''
 
           if json
             message = JSON.parse(raw_message, symbolize_names: true)
           else
-            svc_envl = Meshtastic::ServiceEnvelope.decode(raw_message)
-            # map_report = Meshtastic::MapReport.decode(raw_message)
-            message = svc_envl.to_h[:packet]
+            decoded_packet = Meshtastic::ServiceEnvelope.decode(raw_message)
+            message = decoded_packet.to_h[:packet]
           end
           message[:topic] = raw_topic
           message[:node_id_from] = "!#{message[:from].to_i.to_s(16)}"
@@ -122,6 +121,75 @@ module Meshtastic
 
             decrypted = cipher.update(encrypted_message) + cipher.final
             message[:decrypted] = decrypted
+            # Vvv Decode the decrypted message vvV
+          end
+
+          if message[:decoded]
+            payload = message[:decoded][:payload]
+
+            msg_type = message[:decoded][:portnum]
+            case msg_type
+            when :ADMIN_APP
+              pb_obj = Meshtastic::Admin.decode(payload)
+            when :ATAK_FORWARDER
+              pb_obj = Meshtastic::AtakForwarder.decode(payload)
+            when :ATAK_PLUGIN
+              pb_obj = Meshtastic::AtakPlugin.decode(payload)
+            when :AUDIO_APP
+              pb_obj = Meshtastic::Audio.decode(payload)
+            when :DETECTION_SENSOR_APP
+              pb_obj = Meshtastic::DetectionSensor.decode(payload)
+            when :IP_TUNNEL_APP
+              pb_obj = Meshtastic::IpTunnel.decode(payload)
+            when :MAP_REPORT_APP
+              pb_obj = Meshtastic::MapReport.decode(payload)
+            when :MAX
+              pb_obj = Meshtastic::Max.decode(payload)
+            when :NEIGHBORINFO_APP
+              pb_obj = Meshtastic::NeighborInfo.decode(payload)
+            when :NODEINFO_APP
+              pb_obj = Meshtastic::NodeInfo.decode(payload)
+            when :PAXCOUNTER_APP
+              pb_obj = Meshtastic::Paxcounter.decode(payload)
+            when :POSITION_APP
+              pb_obj = Meshtastic::Position.decode(payload)
+            when :PRIVATE_APP
+              pb_obj = Meshtastic::Private.decode(payload)
+            when :RANGE_TEST_APP
+              pb_obj = Meshtastic::RangeTest.decode(payload)
+            when :REMOTE_HARDWARE_APP
+              pb_obj = Meshtastic::RemoteHardware.decode(payload)
+            when :REPLY_APP
+              pb_obj = Meshtastic::Reply.decode(payload)
+            when :ROUTING_APP
+              pb_obj = Meshtastic::Routing.decode(payload)
+            when :SERIAL_APP
+              pb_obj = Meshtastic::Serial.decode(payload)
+            when :SIMULATOR_APP
+              pb_obj = Meshtastic::Simulator.decode(payload)
+            when :STORE_FORWARD_APP
+              pb_obj = Meshtastic::StoreForward.decode(payload)
+            when :TEXT_MESSAGE_APP
+              pb_obj = Meshtastic::TextMessage.decode(payload)
+            when :TEXT_MESSAGE_COMPRESSED_APP
+              pb_obj = Meshtastic::TextMessageCompressed.decode(payload)
+            when :TELEMETRY_APP
+              pb_obj = Meshtastic::Telemetry.decode(payload)
+            when :TRACEROUTE_APP
+              pb_obj = Meshtastic::Traceroute.decode(payload)
+            when :UNKNOWN_APP
+              pb_obj = Meshtastic.Unknown.decode(payload)
+            when :WAYPOINT_APP
+              pb_obj = Meshtastic::Waypoint.decode(payload)
+            when :ZPS_APP
+              pb_obj = Meshtastic::Zps.decode(payload)
+            else
+              puts "WARNING: Unknown message type: #{msg_type}"
+            end
+            # Overwrite the payload with the decoded protobuf object
+            message[:decoded][:payload] = pb_obj.to_h
+            # puts pb_obj.public_methods
+            # message[:decoded][:pb_obj] = pb_obj
           end
 
           filter_arr = [message[:id].to_s] if filter.nil?
@@ -130,7 +198,12 @@ module Meshtastic
           disp = true if filter_arr.first == message[:id] ||
                          filter_arr.all? { |filter| flat_message.include?(filter) }
 
-        rescue Google::Protobuf::ParseError
+          message[:raw_packet] = raw_packet if block_given?
+          stdout_message = JSON.pretty_generate(message) unless block_given?
+        rescue Google::Protobuf::ParseError,
+               JSON::GeneratorError
+
+          stdout_message = message.to_s.b.inspect unless block_given?
           next
         ensure
           if disp
@@ -139,11 +212,8 @@ module Meshtastic
             else
               puts "\n"
               puts '-' * 80
-              puts "*** DEBUGGING ***"
-              puts "MSG:\n#{message.inspect}"
-              # puts "\nMap Report: #{map_report.inspect}"
-              puts "\nRaw Packet: #{raw_packet.inspect}"
-              puts "Length: #{raw_packet_len}"
+              puts 'MSG:'
+              puts stdout_message
               puts '-' * 80
               puts "\n\n\n"
             end
