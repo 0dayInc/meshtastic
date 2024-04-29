@@ -45,6 +45,7 @@ module Meshtastic
     # Supported Method Parameters::
     # Meshtastic::MQQT.subscribe(
     #   mqtt_obj: 'required - mqtt_obj returned from #connect method'
+    #   root_topic: 'optional - root topic (default: msh)',
     #   region: 'optional - region (default: US)',
     #   channel: 'optional - channel name (default: LongFast)',
     #   psk: 'optional - channel pre-shared key (default: AQ==)',
@@ -55,6 +56,7 @@ module Meshtastic
 
     public_class_method def self.subscribe(opts = {})
       mqtt_obj = opts[:mqtt_obj]
+      root_topic = opts[:root_topic] ||= 'msh'
       region = opts[:region] ||= 'US'
       channel = opts[:channel] ||= 'LongFast'
       psk = opts[:psk] ||= 'AQ=='
@@ -63,9 +65,10 @@ module Meshtastic
       filter = opts[:filter]
 
       # TODO: Find JSON URI for this
-      root_topic = "msh/#{region}/2/json" if json
-      root_topic = "msh/#{region}/2/c" unless json
-      mqtt_obj.subscribe("#{root_topic}/#{channel}/#", qos)
+      mqtt_path = "#{root_topic}/#{region}/2/json/#{channel}/#" if json
+      mqtt_path = "#{root_topic}/#{region}/2/c/#{channel}/#" unless json
+      puts "Subscribing to: #{mqtt_path}"
+      mqtt_obj.subscribe(mqtt_path, qos)
 
       # Decrypt the message
       # Our AES key is 128 or 256 bits, shared as part of the 'Channel' specification.
@@ -131,16 +134,19 @@ module Meshtastic
           next
         ensure
           if disp
-            puts "\n"
-            puts '-' * 80
-            puts "*** DEBUGGING ***"
-            puts "MSG:\n#{message.inspect}"
-            # puts "\nMap Report: #{map_report.inspect}"
-            puts "\nRaw Packet: #{raw_packet.inspect}"
-            puts "Length: #{raw_packet_len}"
-            puts '-' * 80
-            puts "\n\n\n"
-            yield message if block_given?
+            if block_given?
+              yield message
+            else
+              puts "\n"
+              puts '-' * 80
+              puts "*** DEBUGGING ***"
+              puts "MSG:\n#{message.inspect}"
+              # puts "\nMap Report: #{map_report.inspect}"
+              puts "\nRaw Packet: #{raw_packet.inspect}"
+              puts "Length: #{raw_packet_len}"
+              puts '-' * 80
+              puts "\n\n\n"
+            end
           else
             print '.'
           end
@@ -206,6 +212,7 @@ module Meshtastic
 
         #{self}.subscribe(
           mqtt_obj: 'required - mqtt_obj object returned from #connect method',
+          root_topic: 'optional - root topic (default: msh)',
           region: 'optional - region (default: US)',
           channel: 'optional - channel name (default: LongFast)',
           psk: 'optional - channel pre-shared key (default: AQ==)',
