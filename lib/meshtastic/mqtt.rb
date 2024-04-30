@@ -51,7 +51,8 @@ module Meshtastic
     #   psk: 'optional - channel pre-shared key (default: AQ==)',
     #   qos: 'optional - quality of service (default: 0)',
     #   json: 'optional - JSON output (default: false)',
-    #   filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)'
+    #   filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
+    #   gps_metadata: 'optional - include GPS metadata in output (default: false)'
     # )
 
     public_class_method def self.subscribe(opts = {})
@@ -63,6 +64,7 @@ module Meshtastic
       qos = opts[:qos] ||= 0
       json = opts[:json] ||= false
       filter = opts[:filter]
+      gps_metadata = opts[:gps_metadata] ||= false
 
       # TODO: Find JSON URI for this
       full_topic = "#{root_topic}/#{region}/2/json/#{channel}/#" if json
@@ -192,7 +194,8 @@ module Meshtastic
             # message[:decoded][:payload] = pb_obj.to_h unless msg_type == :TRACEROUTE_APP
             message[:decoded][:payload] = pb_obj.to_h
             if message[:decoded][:payload].keys.include?(:latitude_i) &&
-               message[:decoded][:payload].keys.include?(:longitude_i)
+               message[:decoded][:payload].keys.include?(:longitude_i) &&
+               gps_metadata
 
               latitude = pb_obj.to_h[:latitude_i] * 0.0000001
               longitude = pb_obj.to_h[:longitude_i] * 0.0000001
@@ -301,7 +304,8 @@ module Meshtastic
           psk: 'optional - channel pre-shared key (default: AQ==)',
           qos: 'optional - quality of service (default: 0)',
           json: 'optional - JSON output (default: false)',
-          filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)'
+          filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
+          gps_metadata: 'optional - include GPS metadata in output (default: false)'
         )
 
         #{self}.gps_search(
