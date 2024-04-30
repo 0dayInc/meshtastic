@@ -7,6 +7,7 @@ if [[ $1 != "" && $2 != "" && $3 != "" ]]; then
   git add . --all
   echo 'Updating Gems to Latest Versions in Gemfile...'
   ./upgrade_Gemfile_gems.sh
+  ./AUTOGEN_meshtastic_protobufs.sh
   meshtastic_autoinc_version
   git commit -a -S --author="${1} <${2}>" -m "${3}"
   ./upgrade_meshtastic.sh
