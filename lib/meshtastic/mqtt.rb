@@ -131,8 +131,10 @@ module Meshtastic
             case msg_type
             when :ADMIN_APP
               pb_obj = Meshtastic::AdminMessage.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
             when :ATAK_FORWARDER, :ATAK_PLUGIN
               pb_obj = Meshtastic::TAKPacket.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
               # when :AUDIO_APP
               # pb_obj = Meshtastic::Audio.decode(payload)
               # when :DETECTION_SENSOR_APP
@@ -141,51 +143,65 @@ module Meshtastic
               # pb_obj = Meshtastic::IpTunnel.decode(payload)
             when :MAP_REPORT_APP
               pb_obj = Meshtastic::MapReport.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
               # when :MAX
               # pb_obj = Meshtastic::Max.decode(payload)
             when :NEIGHBORINFO_APP
               pb_obj = Meshtastic::NeighborInfo.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
             when :NODEINFO_APP
               pb_obj = Meshtastic::NodeInfo.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
             when :PAXCOUNTER_APP
               pb_obj = Meshtastic::Paxcount.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
             when :POSITION_APP
               pb_obj = Meshtastic::Position.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
+              latitude = pb_obj.to_h[:latitude_i] * 0.0000001
+              longitude = pb_obj.to_h[:longitude_i] * 0.0000001
+              message[:decoded][:payload][:gps_metadata] = gps_search(lat: latitude, lon: longitude).first.data
               # when :PRIVATE_APP
               # pb_obj = Meshtastic::Private.decode(payload)
               # when :RANGE_TEST_APP
               # pb_obj = Meshtastic::RangeTest.decode(payload)
             when :REMOTE_HARDWARE_APP
               pb_obj = Meshtastic::HardwareMessage.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
               # when :REPLY_APP
               # pb_obj = Meshtastic::Reply.decode(payload)
             when :ROUTING_APP
               pb_obj = Meshtastic::Routing.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
             when :SERIAL_APP
               pb_obj = Meshtastic::SerialConnectionStatus.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
               # when :SIMULATOR_APP
               # pb_obj = Meshtastic::Simulator.decode(payload)
             when :STORE_FORWARD_APP
               pb_obj = Meshtastic::StoreAndForward.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
               # when :TEXT_MESSAGE_APP
               # pb_obj = Meshtastic::TextMessage.decode(payload)
             when :TEXT_MESSAGE_COMPRESSED_APP
               pb_obj = Meshtastic::Compressed.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
             when :TELEMETRY_APP
               pb_obj = Meshtastic::Telemetry.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
               # when :TRACEROUTE_APP
               # pb_obj = Meshtastic::Traceroute.decode(payload)
               # when :UNKNOWN_APP
               # pb_obj = Meshtastic.Unknown.decode(payload)
             when :WAYPOINT_APP
               pb_obj = Meshtastic::Waypoint.decode(payload)
+              message[:decoded][:payload] = pb_obj.to_h
               # when :ZPS_APP
               # pb_obj = Meshtastic::Zps.decode(payload)
             else
               puts "WARNING: Unknown message type: #{msg_type}"
             end
             # Overwrite the payload with the decoded protobuf object
-            message[:decoded][:payload] = pb_obj.to_h
             # puts pb_obj.public_methods
             # message[:decoded][:pb_obj] = pb_obj
           end
