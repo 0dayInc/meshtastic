@@ -148,15 +148,16 @@ module Meshtastic
             when :NEIGHBORINFO_APP
               pb_obj = Meshtastic::NeighborInfo.decode(payload)
             when :NODEINFO_APP
-              pb_obj = Meshtastic::NodeInfo.decode(payload)
+              pb_obj = Meshtastic::User.decode(payload)
             when :PAXCOUNTER_APP
               pb_obj = Meshtastic::Paxcount.decode(payload)
             when :POSITION_APP
               pb_obj = Meshtastic::Position.decode(payload)
               # when :PRIVATE_APP
               # pb_obj = Meshtastic::Private.decode(payload)
-              # when :RANGE_TEST_APP
-              # pb_obj = Meshtastic::RangeTest.decode(payload)
+            when :RANGE_TEST_APP
+              # Unsure if this is the correct protobuf object
+              pb_obj = Meshtastic::FromRadio.decode(payload)
             when :REMOTE_HARDWARE_APP
               pb_obj = Meshtastic::HardwareMessage.decode(payload)
               # when :REPLY_APP
@@ -165,22 +166,20 @@ module Meshtastic
               pb_obj = Meshtastic::Routing.decode(payload)
             when :SERIAL_APP
               pb_obj = Meshtastic::SerialConnectionStatus.decode(payload)
-              # when :SIMULATOR_APP
-              # pb_obj = Meshtastic::Simulator.decode(payload)
+            when :SIMULATOR_APP
+              pb_obj = Meshtastic::Compressed.decode(payload)
             when :STORE_FORWARD_APP
               pb_obj = Meshtastic::StoreAndForward.decode(payload)
             when :TEXT_MESSAGE_APP
+              # Unsure if this is the correct protobuf object
               pb_obj = Meshtastic::MqttClientProxyMessage.decode(payload)
             when :TEXT_MESSAGE_COMPRESSED_APP
+              # Unsure if this is the correct protobuf object
               pb_obj = Meshtastic::Compressed.decode(payload)
             when :TELEMETRY_APP
               pb_obj = Meshtastic::Telemetry.decode(payload)
             when :TRACEROUTE_APP
               pb_obj = Meshtastic::RouteDiscovery.decode(payload)
-              # message[:decoded][:payload] = pb_obj.to_h
-              # pb_obj.to_h[:route].each_with_index do |route, index|
-              #   message[:decoded][:payload][:route][index] = route.to_s(16)
-              # end
               # when :UNKNOWN_APP
               # pb_obj = Meshtastic.Unknown.decode(payload)
             when :WAYPOINT_APP
