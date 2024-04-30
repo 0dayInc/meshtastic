@@ -166,16 +166,16 @@ module Meshtastic
               pb_obj = Meshtastic::Routing.decode(payload)
             when :SERIAL_APP
               pb_obj = Meshtastic::SerialConnectionStatus.decode(payload)
-            when :SIMULATOR_APP
+            when :SIMULATOR_APP,
+                 :TEXT_MESSAGE_COMPRESSED_APP
+              # Unsure if this is the correct protobuf object
+              # for TEXT_MESSAGE_COMPRESSED_APP
               pb_obj = Meshtastic::Compressed.decode(payload)
             when :STORE_FORWARD_APP
               pb_obj = Meshtastic::StoreAndForward.decode(payload)
             when :TEXT_MESSAGE_APP
               # Unsure if this is the correct protobuf object
               pb_obj = Meshtastic::MqttClientProxyMessage.decode(payload)
-            when :TEXT_MESSAGE_COMPRESSED_APP
-              # Unsure if this is the correct protobuf object
-              pb_obj = Meshtastic::Compressed.decode(payload)
             when :TELEMETRY_APP
               pb_obj = Meshtastic::Telemetry.decode(payload)
             when :TRACEROUTE_APP
