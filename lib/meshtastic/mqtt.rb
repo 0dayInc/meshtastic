@@ -47,7 +47,7 @@ module Meshtastic
     #   mqtt_obj: 'required - mqtt_obj returned from #connect method'
     #   root_topic: 'optional - root topic (default: msh)',
     #   region: 'optional - region e.g. 'US/VA', etc (default: US)',
-    #   channel: 'optional - channel name (default: "2/c/LongFast/#")',
+    #   channel: 'optional - channel name e.g. "2/stat/#" (default: "2/e/LongFast/#")',
     #   psk: 'optional - channel pre-shared key (default: AQ==)',
     #   qos: 'optional - quality of service (default: 0)',
     #   filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
@@ -320,8 +320,8 @@ module Meshtastic
         #{self}.subscribe(
           mqtt_obj: 'required - mqtt_obj object returned from #connect method',
           root_topic: 'optional - root topic (default: msh)',
-          region: 'optional - region (default: US)',
-          channel: 'optional - channel name (default: LongFast)',
+          region: 'optional - region e.g. 'US/VA', etc (default: US)',
+          channel: 'optional - channel name e.g. '2/stat/#' (default: '2/e/LongFast/#')',
           psk: 'optional - channel pre-shared key (default: AQ==)',
           qos: 'optional - quality of service (default: 0)',
           json: 'optional - JSON output (default: false)',
