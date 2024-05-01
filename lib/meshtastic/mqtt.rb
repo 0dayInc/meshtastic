@@ -175,7 +175,8 @@ module Meshtastic
               pb_obj = Meshtastic::StoreAndForward.decode(payload)
             when :TEXT_MESSAGE_APP
               # Unsure if this is the correct protobuf object
-              pb_obj = Meshtastic::MqttClientProxyMessage.decode(payload)
+              # pb_obj = Meshtastic::MqttClientProxyMessage.decode(payload)
+              pb_obj = Meshtastic::Data.decode(payload)
             when :TELEMETRY_APP
               pb_obj = Meshtastic::Telemetry.decode(payload)
             when :TRACEROUTE_APP
@@ -214,20 +215,27 @@ module Meshtastic
             # message[:decoded][:pb_obj] = pb_obj
           end
 
+          message[:raw_packet] = raw_packet if block_given?
+          unless block_given?
+            message[:stdout] = 'pretty'
+            stdout_message = JSON.pretty_generate(message)
+          end
+        rescue Google::Protobuf::ParseError,
+               JSON::GeneratorError
+
+          unless block_given?
+            message[:stdout] = 'inspect'
+            stdout_message = message.inspect
+          end
+
+          next
+        ensure
           filter_arr = [message[:id].to_s] if filter.nil?
           flat_message = message.values.join(' ')
 
           disp = true if filter_arr.first == message[:id] ||
                          filter_arr.all? { |filter| flat_message.include?(filter) }
 
-          message[:raw_packet] = raw_packet if block_given?
-          stdout_message = JSON.pretty_generate(message) unless block_given?
-        rescue Google::Protobuf::ParseError,
-               JSON::GeneratorError
-
-          stdout_message = message.inspect unless block_given?
-          next
-        ensure
           if disp
             if block_given?
               yield message
