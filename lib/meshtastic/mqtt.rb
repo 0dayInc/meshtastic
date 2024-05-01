@@ -46,11 +46,10 @@ module Meshtastic
     # Meshtastic::MQQT.subscribe(
     #   mqtt_obj: 'required - mqtt_obj returned from #connect method'
     #   root_topic: 'optional - root topic (default: msh)',
-    #   region: 'optional - region (default: US)',
-    #   channel: 'optional - channel name (default: LongFast)',
+    #   region: 'optional - region e.g. 'US/VA', etc (default: US)',
+    #   channel: 'optional - channel name e.g. "2/stat/#" (default: "2/e/LongFast/#")',
     #   psk: 'optional - channel pre-shared key (default: AQ==)',
     #   qos: 'optional - quality of service (default: 0)',
-    #   json: 'optional - JSON output (default: false)',
     #   filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
     #   gps_metadata: 'optional - include GPS metadata in output (default: false)'
     # )
@@ -59,7 +58,7 @@ module Meshtastic
       mqtt_obj = opts[:mqtt_obj]
       root_topic = opts[:root_topic] ||= 'msh'
       region = opts[:region] ||= 'US'
-      channel = opts[:channel] ||= 'LongFast'
+      channel = opts[:channel] ||= '2/e/LongFast/#'
       psk = opts[:psk] ||= 'AQ=='
       qos = opts[:qos] ||= 0
       json = opts[:json] ||= false
@@ -67,8 +66,7 @@ module Meshtastic
       gps_metadata = opts[:gps_metadata] ||= false
 
       # TODO: Find JSON URI for this
-      full_topic = "#{root_topic}/#{region}/2/json/#{channel}/#" if json
-      full_topic = "#{root_topic}/#{region}/2/c/#{channel}/#" unless json
+      full_topic = "#{root_topic}/#{region}/#{channel}"
       puts "Subscribing to: #{full_topic}"
       mqtt_obj.subscribe(full_topic, qos)
 
@@ -76,7 +74,7 @@ module Meshtastic
       # Our AES key is 128 or 256 bits, shared as part of the 'Channel' specification.
 
       # Actual pre-shared key for LongFast channel
-      psk = '1PG7OiApB1nwvP+rz05pAQ==' if channel == 'LongFast'
+      psk = '1PG7OiApB1nwvP+rz05pAQ==' if channel.include?('LongFast')
       padded_psk = psk.ljust(psk.length + ((4 - (psk.length % 4)) % 4), '=')
       replaced_psk = padded_psk.gsub('-', '+').gsub('_', '/')
       psk = replaced_psk
@@ -227,8 +225,10 @@ module Meshtastic
             stdout_message = JSON.pretty_generate(decoded_payload_hash)
           end
         rescue Google::Protobuf::ParseError,
-               JSON::GeneratorError
+               JSON::GeneratorError,
+               ArgumentError => e
 
+          message[:decrypted] = e.message if ArgumentError
           decoded_payload_hash[:packet] = message
           unless block_given?
             message[:stdout] = 'inspect'
@@ -320,8 +320,8 @@ module Meshtastic
         #{self}.subscribe(
           mqtt_obj: 'required - mqtt_obj object returned from #connect method',
           root_topic: 'optional - root topic (default: msh)',
-          region: 'optional - region (default: US)',
-          channel: 'optional - channel name (default: LongFast)',
+          region: 'optional - region e.g. 'US/VA', etc (default: US)',
+          channel: 'optional - channel name e.g. '2/stat/#' (default: '2/e/LongFast/#')',
           psk: 'optional - channel pre-shared key (default: AQ==)',
           qos: 'optional - quality of service (default: 0)',
           json: 'optional - JSON output (default: false)',
