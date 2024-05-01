@@ -86,21 +86,24 @@ module Meshtastic
       cipher = OpenSSL::Cipher.new('AES-128-CTR')
       filter_arr = filter.to_s.split(',').map(&:strip)
       mqtt_obj.get_packet do |packet_bytes|
-        raw_packet = packet_bytes.to_s.b
+        # raw_packet = packet_bytes.to_s.b
         raw_topic = packet_bytes.topic ||= ''
-        raw_message = packet_bytes.payload
+        raw_payload = packet_bytes.payload
 
         begin
           disp = false
+          decoded_payload_hash = {}
           message = {}
           stdout_message = ''
 
           if json
-            message = JSON.parse(raw_message, symbolize_names: true)
+            decoded_payload_hash = JSON.parse(raw_payload, symbolize_names: true)
           else
-            decoded_packet = Meshtastic::ServiceEnvelope.decode(raw_message)
-            message = decoded_packet.to_h[:packet]
+            decoded_payload = Meshtastic::ServiceEnvelope.decode(raw_payload)
+            decoded_payload_hash = decoded_payload.to_h
           end
+
+          message = decoded_payload_hash[:packet] if decoded_payload_hash.keys.include?(:packet)
           message[:topic] = raw_topic
           message[:node_id_from] = "!#{message[:from].to_i.to_s(16)}"
           message[:node_id_to] = "!#{message[:to].to_i.to_s(16)}"
@@ -123,6 +126,8 @@ module Meshtastic
 
             decrypted = cipher.update(encrypted_message) + cipher.final
             message[:decrypted] = decrypted
+            # decoded_packet = Meshtastic::ServiceEnvelope.decode(decrypted)
+            # puts "Decoded Decrypted Packet: #{decoded_packet.display.to_h}"
             # Vvv Decode the decrypted message vvV
           end
 
@@ -215,17 +220,19 @@ module Meshtastic
             # message[:decoded][:pb_obj] = pb_obj
           end
 
-          message[:raw_packet] = raw_packet if block_given?
+          # message[:raw_packet] = raw_packet if block_given?
+          decoded_payload_hash[:packet] = message
           unless block_given?
             message[:stdout] = 'pretty'
-            stdout_message = JSON.pretty_generate(message)
+            stdout_message = JSON.pretty_generate(decoded_payload_hash)
           end
         rescue Google::Protobuf::ParseError,
                JSON::GeneratorError
 
+          decoded_payload_hash[:packet] = message
           unless block_given?
             message[:stdout] = 'inspect'
-            stdout_message = message.inspect
+            stdout_message = decoded_payload_hash.inspect
           end
 
           next
@@ -238,7 +245,7 @@ module Meshtastic
 
           if disp
             if block_given?
-              yield message
+              yield decoded_payload_hash
             else
               puts "\n"
               puts '-' * 80
