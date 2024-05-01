@@ -203,6 +203,13 @@ module Meshtastic
                 lon: longitude
               ).first.data
             end
+
+            # If we there's a mac address, make it look like one.
+            if message[:decoded][:payload].keys.include?(:macaddr)
+              macaddr = message[:decoded][:payload][:macaddr]
+              macaddr_fmt = macaddr.bytes.map { |byte| byte.to_s(16).rjust(2, '0') }.join(':')
+              message[:decoded][:payload][:macaddr] = macaddr_fmt
+            end
             # puts pb_obj.public_methods
             # message[:decoded][:pb_obj] = pb_obj
           end
