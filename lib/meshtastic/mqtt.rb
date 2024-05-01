@@ -59,6 +59,7 @@ module Meshtastic
       root_topic = opts[:root_topic] ||= 'msh'
       region = opts[:region] ||= 'US'
       channel = opts[:channel] ||= '2/e/LongFast/#'
+      # TODO: Support Array of PSKs and attempt each until decrypted
       psk = opts[:psk] ||= 'AQ=='
       qos = opts[:qos] ||= 0
       json = opts[:json] ||= false
@@ -74,7 +75,7 @@ module Meshtastic
       # Our AES key is 128 or 256 bits, shared as part of the 'Channel' specification.
 
       # Actual pre-shared key for LongFast channel
-      psk = '1PG7OiApB1nwvP+rz05pAQ==' if channel.include?('LongFast')
+      psk = '1PG7OiApB1nwvP+rz05pAQ==' if psk == 'AQ=='
       padded_psk = psk.ljust(psk.length + ((4 - (psk.length % 4)) % 4), '=')
       replaced_psk = padded_psk.gsub('-', '+').gsub('_', '/')
       psk = replaced_psk
