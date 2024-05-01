@@ -124,9 +124,6 @@ module Meshtastic
 
             decrypted = cipher.update(encrypted_message) + cipher.final
             message[:decrypted] = decrypted
-            # decoded_packet = Meshtastic::ServiceEnvelope.decode(decrypted)
-            # puts "Decoded Decrypted Packet: #{decoded_packet.display.to_h}"
-            # Vvv Decode the decrypted message vvV
           end
 
           if message[:decoded]
@@ -228,7 +225,7 @@ module Meshtastic
                JSON::GeneratorError,
                ArgumentError => e
 
-          message[:decrypted] = e.message if ArgumentError
+          message[:decrypted] = e.message if e.message.include?('key must be')
           decoded_payload_hash[:packet] = message
           unless block_given?
             message[:stdout] = 'inspect'
