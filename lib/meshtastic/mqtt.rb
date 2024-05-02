@@ -6,6 +6,7 @@ require 'json'
 require 'mqtt'
 require 'openssl'
 require 'securerandom'
+require 'tty-prompt'
 
 # Avoiding Namespace Collisions
 MQTTClient = MQTT::Client
@@ -43,12 +44,32 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
+    # Meshtastic::MQQT.get_cipher_keys(
+    #  psks: 'required - hash of channel / pre-shared key value pairs'
+    #  )
+
+    private_class_method def self.get_cipher_keys(opts = {})
+      psks = opts[:psks]
+
+      psks.each_key do |key|
+        psk = psks[key]
+        padded_psk = psk.ljust(psk.length + ((4 - (psk.length % 4)) % 4), '=')
+        replaced_psk = padded_psk.gsub('-', '+').gsub('_', '/')
+        psks[key] = replaced_psk
+      end
+
+      psks
+    rescue StandardError => e
+      raise e
+    end
+
+    # Supported Method Parameters::
     # Meshtastic::MQQT.subscribe(
     #   mqtt_obj: 'required - mqtt_obj returned from #connect method'
     #   root_topic: 'optional - root topic (default: msh)',
     #   region: 'optional - region e.g. 'US/VA', etc (default: US)',
     #   channel: 'optional - channel name e.g. "2/stat/#" (default: "2/e/LongFast/#")',
-    #   psk: 'optional - channel pre-shared key (default: AQ==)',
+    #   psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: "AQ==" })',
     #   qos: 'optional - quality of service (default: 0)',
     #   filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
     #   gps_metadata: 'optional - include GPS metadata in output (default: false)'
@@ -60,34 +81,29 @@ module Meshtastic
       region = opts[:region] ||= 'US'
       channel = opts[:channel] ||= '2/e/LongFast/#'
       # TODO: Support Array of PSKs and attempt each until decrypted
-      psk = opts[:psk] ||= 'AQ=='
+
+      public_psk = '1PG7OiApB1nwvP+rz05pAQ=='
+      psks = opts[:psks] ||= { LongFast: public_psk }
+      raise 'ERROR: psks parameter must be a hash of :channel => psk key value pairs' unless psks.is_a?(Hash)
+
+      psks[:LongFast] = public_psk if psks[:LongFast] == 'AQ=='
+      psks = get_cipher_keys(psks: psks)
+
       qos = opts[:qos] ||= 0
       json = opts[:json] ||= false
       filter = opts[:filter]
       gps_metadata = opts[:gps_metadata] ||= false
 
-      # TODO: Find JSON URI for this
+      # NOTE: Use MQTT Explorer for topic discovery
       full_topic = "#{root_topic}/#{region}/#{channel}"
       puts "Subscribing to: #{full_topic}"
       mqtt_obj.subscribe(full_topic, qos)
 
-      # Decrypt the message
-      # Our AES key is 128 or 256 bits, shared as part of the 'Channel' specification.
-
-      # Actual pre-shared key for LongFast channel
-      psk = '1PG7OiApB1nwvP+rz05pAQ==' if psk == 'AQ=='
-      padded_psk = psk.ljust(psk.length + ((4 - (psk.length % 4)) % 4), '=')
-      replaced_psk = padded_psk.gsub('-', '+').gsub('_', '/')
-      psk = replaced_psk
-      dec_psk = Base64.strict_decode64(psk)
-
-      # cipher = OpenSSL::Cipher.new('AES-256-CTR')
-      cipher = OpenSSL::Cipher.new('AES-128-CTR')
       filter_arr = filter.to_s.split(',').map(&:strip)
       mqtt_obj.get_packet do |packet_bytes|
         # raw_packet = packet_bytes.to_s.b
         raw_topic = packet_bytes.topic ||= ''
-        raw_payload = packet_bytes.payload
+        raw_payload = packet_bytes.payload ||= ''
 
         begin
           disp = false
@@ -110,15 +126,21 @@ module Meshtastic
           encrypted_message = message[:encrypted]
           # If encrypted_message is not nil, then decrypt the message
           if encrypted_message.to_s.length.positive?
+
             packet_id = message[:id]
             packet_from = message[:from]
+
             nonce_packet_id = [packet_id].pack('V').ljust(8, "\x00")
             nonce_from_node = [packet_from].pack('V').ljust(8, "\x00")
             nonce = "#{nonce_packet_id}#{nonce_from_node}".b
 
-            # Decrypt the message
-            # Key must be 32 bytes
-            # IV mustr be 16 bytes
+            psk = psks[:LongFast]
+            target_chanel = decoded_payload_hash[:channel_id].to_s.to_sym
+            psk = psks[target_chanel] if psks.keys.include?(target_chanel)
+            dec_psk = Base64.strict_decode64(psk)
+
+            cipher = OpenSSL::Cipher.new('AES-128-CTR')
+            cipher = OpenSSL::Cipher.new('AES-256-CTR') if dec_psk.length == 32
             cipher.decrypt
             cipher.key = dec_psk
             cipher.iv = nonce
@@ -320,7 +342,7 @@ module Meshtastic
           root_topic: 'optional - root topic (default: msh)',
           region: 'optional - region e.g. 'US/VA', etc (default: US)',
           channel: 'optional - channel name e.g. '2/stat/#' (default: '2/e/LongFast/#')',
-          psk: 'optional - channel pre-shared key (default: AQ==)',
+          psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: 'AQ==' })',
           qos: 'optional - quality of service (default: 0)',
           json: 'optional - JSON output (default: false)',
           filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
