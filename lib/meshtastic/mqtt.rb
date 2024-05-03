@@ -64,6 +64,125 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
+    # Meshtastic::MQQT.recursively_decode_payloads(
+    #   object: 'required - object to recursively decode',
+    #   msg_type: 'required - message type (e.g. :TEXT_MESSAGE_APP)',
+    #   gps_metadata: 'optional - include GPS metadata in output (default: false)'
+    # )
+
+    private_class_method def self.recursively_decode_payloads(opts = {})
+      object = opts[:object]
+      msg_type = opts[:msg_type]
+      gps_metadata = opts[:gps_metadata]
+
+      # puts "OBJECT: #{object.inspect}"
+      object = Meshtastic::Data.decode(object).to_h if object.is_a?(String)
+
+      object.each do |key, value|
+        if value.is_a?(Hash)
+          # Recursive call if the value is a hash
+          recursively_decode_payloads(object: value)
+        elsif value.is_a?(Array)
+          # Process each element if it's an array
+          value.each do |item|
+            recursively_decode_payloads(object: item) if item.is_a?(Hash)
+          end
+        end
+        # Check if the key matches 'payload' and decode
+        case key
+        when :latitude_i
+          object[:latitude] = object[:latitude_i] * 0.0000001
+        when :longitude_i
+          object[:longitude] = object[:longitude_i] * 0.0000001
+        when :macaddr
+          object[key] = object[key].bytes.map { |byte| byte.to_s(16).rjust(2, '0') }.join(':')
+        when :payload
+          case msg_type
+          when :ADMIN_APP
+            decoder = Meshtastic::AdminMessage.decode(payload)
+          when :ATAK_FORWARDER, :ATAK_PLUGIN
+            decoder = Meshtastic::TAKPacket
+            # when :AUDIO_APP
+            # decoder = Meshtastic::Audio
+          when :DETECTION_SENSOR_APP
+            decoder = Meshtastic::DeviceState
+            # when :IP_TUNNEL_APP
+            # decoder = Meshtastic::IpTunnel
+          when :MAP_REPORT_APP
+            decoder = Meshtastic::MapReport
+            # when :MAX
+            # decoder = Meshtastic::Max
+          when :NEIGHBORINFO_APP
+            decoder = Meshtastic::NeighborInfo
+          when :NODEINFO_APP
+            decoder = Meshtastic::User
+          when :PAXCOUNTER_APP
+            decoder = Meshtastic::Paxcount
+          when :POSITION_APP
+            decoder = Meshtastic::Position
+            # when :PRIVATE_APP
+            # decoder = Meshtastic::Private
+          when :RANGE_TEST_APP
+            # Unsure if this is the correct protobuf object
+            decoder = Meshtastic::FromRadio
+          when :REMOTE_HARDWARE_APP
+            decoder = Meshtastic::HardwareMessage
+            # when :REPLY_APP
+            # decoder = Meshtastic::Reply
+          when :ROUTING_APP
+            decoder = Meshtastic::Routing
+          when :SERIAL_APP
+            decoder = Meshtastic::SerialConnectionStatus
+          when :SIMULATOR_APP
+            decoder = Meshtastic::Compressed
+          when :STORE_FORWARD_APP
+            decoder = Meshtastic::StoreAndForward
+          when :TEXT_MESSAGE_APP
+            # Unsure if this is the correct protobuf object
+            # decoder = Meshtastic::MqttClientProxyMessage
+            decoder = Meshtastic::Data
+          when :TELEMETRY_APP
+            decoder = Meshtastic::Telemetry
+          when :TRACEROUTE_APP
+            decoder = Meshtastic::RouteDiscovery
+          when :UNKNOWN_APP
+            decoder = Meshtastic::Data.decode
+          when :WAYPOINT_APP
+            decoder = Meshtastic::Waypoint
+            # when :ZPS_APP
+            # decoder = Meshtastic::Zps
+          else
+            puts "WARNING: Unknown message type: #{msg_type}"
+            decoder = Meshtastic::Data.decode
+          end
+
+          # begin
+          # # If the value is base64 encoded, base64 decode and then decode
+          #   base64_decoded_value = Base64.strict_decode64(value)
+          #   object[key] = decoder.decode(base64_decoded_value).to_h
+          # rescue ArgumentError => e
+          #   # Otherwise, just decode the value
+          object[key] = decoder.decode(value).to_h
+          # end
+
+        end
+
+        next unless gps_metadata && object[:latitude] && object[:longitude]
+
+        object[:gps_metadata] = gps_search(
+          lat: object[:latitude],
+          lon: object[:longitude]
+        ).first.data
+      end
+
+      object
+    rescue Google::Protobuf::ParseError
+      object
+    rescue StandardError => e
+      raise e
+    end
+
+    # Supported Method Parameters::
     # Meshtastic::MQQT.subscribe(
     #   mqtt_obj: 'required - mqtt_obj returned from #connect method'
     #   root_topic: 'optional - root topic (default: msh)',
@@ -72,7 +191,8 @@ module Meshtastic
     #   psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: "AQ==" })',
     #   qos: 'optional - quality of service (default: 0)',
     #   filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
-    #   gps_metadata: 'optional - include GPS metadata in output (default: false)'
+    #   gps_metadata: 'optional - include GPS metadata in output (default: false)',
+    #   include_raw: 'optional - include raw packet data in output (default: false)'
     # )
 
     public_class_method def self.subscribe(opts = {})
@@ -93,6 +213,7 @@ module Meshtastic
       json = opts[:json] ||= false
       filter = opts[:filter]
       gps_metadata = opts[:gps_metadata] ||= false
+      include_raw = opts[:include_raw] ||= false
 
       # NOTE: Use MQTT Explorer for topic discovery
       full_topic = "#{root_topic}/#{region}/#{channel}"
@@ -101,7 +222,7 @@ module Meshtastic
 
       filter_arr = filter.to_s.split(',').map(&:strip)
       mqtt_obj.get_packet do |packet_bytes|
-        # raw_packet = packet_bytes.to_s.b
+        raw_packet = packet_bytes.to_s.b if include_raw
         raw_topic = packet_bytes.topic ||= ''
         raw_payload = packet_bytes.payload ||= ''
 
@@ -123,10 +244,10 @@ module Meshtastic
           message[:node_id_from] = "!#{message[:from].to_i.to_s(16)}"
           message[:node_id_to] = "!#{message[:to].to_i.to_s(16)}"
 
+          # If encrypted_message is not nil, then decrypt
+          # the message prior to decoding.
           encrypted_message = message[:encrypted]
-          # If encrypted_message is not nil, then decrypt the message
           if encrypted_message.to_s.length.positive?
-
             packet_id = message[:id]
             packet_from = message[:from]
 
@@ -146,99 +267,22 @@ module Meshtastic
             cipher.iv = nonce
 
             decrypted = cipher.update(encrypted_message) + cipher.final
-            message[:decrypted] = decrypted
+            message[:decoded] = Meshtastic::Data.decode(decrypted).to_h
+            message[:encrypted] = :decrypted
           end
 
           if message[:decoded]
+            # payload = Meshtastic::Data.decode(message[:decoded][:payload]).to_h
             payload = message[:decoded][:payload]
-
             msg_type = message[:decoded][:portnum]
-            case msg_type
-            when :ADMIN_APP
-              pb_obj = Meshtastic::AdminMessage.decode(payload)
-            when :ATAK_FORWARDER, :ATAK_PLUGIN
-              pb_obj = Meshtastic::TAKPacket.decode(payload)
-              # when :AUDIO_APP
-              # pb_obj = Meshtastic::Audio.decode(payload)
-            when :DETECTION_SENSOR_APP
-              pb_obj = Meshtastic::DeviceState.decode(payload)
-              # when :IP_TUNNEL_APP
-              # pb_obj = Meshtastic::IpTunnel.decode(payload)
-            when :MAP_REPORT_APP
-              pb_obj = Meshtastic::MapReport.decode(payload)
-              # when :MAX
-              # pb_obj = Meshtastic::Max.decode(payload)
-            when :NEIGHBORINFO_APP
-              pb_obj = Meshtastic::NeighborInfo.decode(payload)
-            when :NODEINFO_APP
-              pb_obj = Meshtastic::User.decode(payload)
-            when :PAXCOUNTER_APP
-              pb_obj = Meshtastic::Paxcount.decode(payload)
-            when :POSITION_APP
-              pb_obj = Meshtastic::Position.decode(payload)
-              # when :PRIVATE_APP
-              # pb_obj = Meshtastic::Private.decode(payload)
-            when :RANGE_TEST_APP
-              # Unsure if this is the correct protobuf object
-              pb_obj = Meshtastic::FromRadio.decode(payload)
-            when :REMOTE_HARDWARE_APP
-              pb_obj = Meshtastic::HardwareMessage.decode(payload)
-              # when :REPLY_APP
-              # pb_obj = Meshtastic::Reply.decode(payload)
-            when :ROUTING_APP
-              pb_obj = Meshtastic::Routing.decode(payload)
-            when :SERIAL_APP
-              pb_obj = Meshtastic::SerialConnectionStatus.decode(payload)
-            when :SIMULATOR_APP,
-                 :TEXT_MESSAGE_COMPRESSED_APP
-              # Unsure if this is the correct protobuf object
-              # for TEXT_MESSAGE_COMPRESSED_APP
-              pb_obj = Meshtastic::Compressed.decode(payload)
-            when :STORE_FORWARD_APP
-              pb_obj = Meshtastic::StoreAndForward.decode(payload)
-            when :TEXT_MESSAGE_APP
-              # Unsure if this is the correct protobuf object
-              # pb_obj = Meshtastic::MqttClientProxyMessage.decode(payload)
-              pb_obj = Meshtastic::Data.decode(payload)
-            when :TELEMETRY_APP
-              pb_obj = Meshtastic::Telemetry.decode(payload)
-            when :TRACEROUTE_APP
-              pb_obj = Meshtastic::RouteDiscovery.decode(payload)
-              # when :UNKNOWN_APP
-              # pb_obj = Meshtastic.Unknown.decode(payload)
-            when :WAYPOINT_APP
-              pb_obj = Meshtastic::Waypoint.decode(payload)
-              # when :ZPS_APP
-              # pb_obj = Meshtastic::Zps.decode(payload)
-            else
-              puts "WARNING: Unknown message type: #{msg_type}"
-            end
-            # Overwrite the payload with the decoded protobuf object
-            # message[:decoded][:payload] = pb_obj.to_h unless msg_type == :TRACEROUTE_APP
-            message[:decoded][:payload] = pb_obj.to_h
-            if message[:decoded][:payload].keys.include?(:latitude_i) &&
-               message[:decoded][:payload].keys.include?(:longitude_i) &&
-               gps_metadata
-
-              latitude = pb_obj.to_h[:latitude_i] * 0.0000001
-              longitude = pb_obj.to_h[:longitude_i] * 0.0000001
-              message[:decoded][:payload][:gps_metadata] = gps_search(
-                lat: latitude,
-                lon: longitude
-              ).first.data
-            end
-
-            # If we there's a mac address, make it look like one.
-            if message[:decoded][:payload].keys.include?(:macaddr)
-              macaddr = message[:decoded][:payload][:macaddr]
-              macaddr_fmt = macaddr.bytes.map { |byte| byte.to_s(16).rjust(2, '0') }.join(':')
-              message[:decoded][:payload][:macaddr] = macaddr_fmt
-            end
-            # puts pb_obj.public_methods
-            # message[:decoded][:pb_obj] = pb_obj
+            message[:decoded][:payload] = recursively_decode_payloads(
+              object: payload,
+              msg_type: msg_type,
+              gps_metadata: gps_metadata
+            )
           end
 
-          # message[:raw_packet] = raw_packet if block_given?
+          message[:raw_packet] = raw_packet if include_raw
           decoded_payload_hash[:packet] = message
           unless block_given?
             message[:stdout] = 'pretty'
@@ -249,8 +293,11 @@ module Meshtastic
                ArgumentError => e
 
           message[:decrypted] = e.message if e.message.include?('key must be')
+          message[:decrypted] = 'unable to decrypt - psk?' if e.message.include?('occurred during parsing')
           decoded_payload_hash[:packet] = message
           unless block_given?
+            puts "WARNING: #{e.inspect} - MSG IS >>>"
+            # puts e.backtrace
             message[:stdout] = 'inspect'
             stdout_message = decoded_payload_hash.inspect
           end
