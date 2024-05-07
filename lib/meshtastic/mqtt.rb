@@ -145,7 +145,7 @@ module Meshtastic
         mac_raw = payload[:macaddr]
         mac_hex_arr = mac_raw.bytes.map { |byte| byte.to_s(16).rjust(2, '0') }
         mac_hex_str = mac_hex_arr.join(':')
-        payload[:macaddr_hex] = mac_hex_str
+        payload[:macaddr] = mac_hex_str
       end
 
       if payload.keys.include?(:time)
