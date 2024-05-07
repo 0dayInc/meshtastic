@@ -64,120 +64,91 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
-    # Meshtastic::MQQT.recursively_decode_payloads(
-    #   object: 'required - object to recursively decode',
+    # Meshtastic::MQQT.decode_payload(
+    #   payload: 'required - payload to recursively decode',
     #   msg_type: 'required - message type (e.g. :TEXT_MESSAGE_APP)',
-    #   gps_metadata: 'optional - include GPS metadata in output (default: false)'
+    #   gps_metadata: 'optional - include GPS metadata in output (default: false)',
     # )
 
-    private_class_method def self.recursively_decode_payloads(opts = {})
-      object = opts[:object]
+    public_class_method def self.decode_payload(opts = {})
+      payload = opts[:payload]
       msg_type = opts[:msg_type]
       gps_metadata = opts[:gps_metadata]
 
-      # puts "OBJECT: #{object.inspect}"
-      object = Meshtastic::Data.decode(object).to_h if object.is_a?(String)
-
-      object.each do |key, value|
-        if value.is_a?(Hash)
-          # Recursive call if the value is a hash
-          recursively_decode_payloads(object: value)
-        elsif value.is_a?(Array)
-          # Process each element if it's an array
-          value.each do |item|
-            recursively_decode_payloads(object: item) if item.is_a?(Hash)
-          end
+      case msg_type
+      when :ADMIN_APP
+        decoder = Meshtastic::AdminMessage
+      when :ATAK_FORWARDER, :ATAK_PLUGIN
+        decoder = Meshtastic::TAKPacket
+        # when :AUDIO_APP
+        # decoder = Meshtastic::Audio
+      when :DETECTION_SENSOR_APP
+        decoder = Meshtastic::DeviceState
+        # when :IP_TUNNEL_APP
+        # decoder = Meshtastic::IpTunnel
+      when :MAP_REPORT_APP
+        decoder = Meshtastic::MapReport
+        # when :MAX
+        # decoder = Meshtastic::Max
+      when :NEIGHBORINFO_APP
+        decoder = Meshtastic::NeighborInfo
+      when :NODEINFO_APP
+        decoder = Meshtastic::User
+      when :PAXCOUNTER_APP
+        decoder = Meshtastic::Paxcount
+      when :POSITION_APP
+        decoder = Meshtastic::Position
+        # when :PRIVATE_APP
+        # decoder = Meshtastic::Private
+      when :RANGE_TEST_APP
+        # Unsure if this is the correct protobuf object
+        decoder = Meshtastic::FromRadio
+      when :REMOTE_HARDWARE_APP
+        decoder = Meshtastic::HardwareMessage
+        # when :REPLY_APP
+        # decoder = Meshtastic::Reply
+      when :ROUTING_APP
+        decoder = Meshtastic::Routing
+      when :SERIAL_APP
+        decoder = Meshtastic::SerialConnectionStatus
+      when :SIMULATOR_APP
+        decoder = Meshtastic::Compressed
+      when :STORE_FORWARD_APP
+        decoder = Meshtastic::StoreAndForward
+      when :TEXT_MESSAGE_APP
+        # Unsure if this is the correct protobuf object
+        # decoder = Meshtastic::MqttClientProxyMessage
+        decoder = Meshtastic::Data
+      when :TELEMETRY_APP
+        decoder = Meshtastic::Telemetry
+      when :TRACEROUTE_APP
+        decoder = Meshtastic::RouteDiscovery
+      when :WAYPOINT_APP
+        decoder = Meshtastic::Waypoint
+        # when :ZPS_APP
+        # decoder = Meshtastic::Zps
+      end
+      payload = decoder.decode(payload).to_h
+      if payload.keys.include?(:latitude_i) && payload.keys.include?(:longitude_i)
+        lat = payload[:latitude_i] * 0.0000001
+        lon = payload[:longitude_i] * 0.0000001
+        payload[:latitude] = lat
+        payload[:longitude] = lon
+        if gps_metadata
+          gps_search_resp = Meshtastic.gps_search(lat: lat, lon: lon)
+          payload[:gps_metadata] = gps_search_resp
         end
-        # Check if the key matches 'payload' and decode
-        case key
-        when :latitude_i
-          object[:latitude] = object[:latitude_i] * 0.0000001
-        when :longitude_i
-          object[:longitude] = object[:longitude_i] * 0.0000001
-        when :macaddr
-          object[key] = object[key].bytes.map { |byte| byte.to_s(16).rjust(2, '0') }.join(':')
-        when :payload
-          case msg_type
-          when :ADMIN_APP
-            decoder = Meshtastic::AdminMessage.decode(payload)
-          when :ATAK_FORWARDER, :ATAK_PLUGIN
-            decoder = Meshtastic::TAKPacket
-            # when :AUDIO_APP
-            # decoder = Meshtastic::Audio
-          when :DETECTION_SENSOR_APP
-            decoder = Meshtastic::DeviceState
-            # when :IP_TUNNEL_APP
-            # decoder = Meshtastic::IpTunnel
-          when :MAP_REPORT_APP
-            decoder = Meshtastic::MapReport
-            # when :MAX
-            # decoder = Meshtastic::Max
-          when :NEIGHBORINFO_APP
-            decoder = Meshtastic::NeighborInfo
-          when :NODEINFO_APP
-            decoder = Meshtastic::User
-          when :PAXCOUNTER_APP
-            decoder = Meshtastic::Paxcount
-          when :POSITION_APP
-            decoder = Meshtastic::Position
-            # when :PRIVATE_APP
-            # decoder = Meshtastic::Private
-          when :RANGE_TEST_APP
-            # Unsure if this is the correct protobuf object
-            decoder = Meshtastic::FromRadio
-          when :REMOTE_HARDWARE_APP
-            decoder = Meshtastic::HardwareMessage
-            # when :REPLY_APP
-            # decoder = Meshtastic::Reply
-          when :ROUTING_APP
-            decoder = Meshtastic::Routing
-          when :SERIAL_APP
-            decoder = Meshtastic::SerialConnectionStatus
-          when :SIMULATOR_APP
-            decoder = Meshtastic::Compressed
-          when :STORE_FORWARD_APP
-            decoder = Meshtastic::StoreAndForward
-          when :TEXT_MESSAGE_APP
-            # Unsure if this is the correct protobuf object
-            # decoder = Meshtastic::MqttClientProxyMessage
-            decoder = Meshtastic::Data
-          when :TELEMETRY_APP
-            decoder = Meshtastic::Telemetry
-          when :TRACEROUTE_APP
-            decoder = Meshtastic::RouteDiscovery
-          when :UNKNOWN_APP
-            decoder = Meshtastic::Data.decode
-          when :WAYPOINT_APP
-            decoder = Meshtastic::Waypoint
-            # when :ZPS_APP
-            # decoder = Meshtastic::Zps
-          else
-            puts "WARNING: Unknown message type: #{msg_type}"
-            decoder = Meshtastic::Data.decode
-          end
-
-          # begin
-          # # If the value is base64 encoded, base64 decode and then decode
-          #   base64_decoded_value = Base64.strict_decode64(value)
-          #   object[key] = decoder.decode(base64_decoded_value).to_h
-          # rescue ArgumentError => e
-          #   # Otherwise, just decode the value
-          object[key] = decoder.decode(value).to_h
-          # end
-
-        end
-
-        next unless gps_metadata && object[:latitude] && object[:longitude]
-
-        object[:gps_metadata] = gps_search(
-          lat: object[:latitude],
-          lon: object[:longitude]
-        ).first.data
       end
 
-      object
+      if payload.keys.include?(:macaddr)
+        mac_hex_arr = payload[:macaddr].bytes.map { |byte| byte.to_s(16).rjust(2, '0') }
+        mac_str = mac_hex_arr.join(':')
+        payload[:macaddr] = mac_str
+      end
+
+      payload
     rescue Google::Protobuf::ParseError
-      object
+      payload
     rescue StandardError => e
       raise e
     end
@@ -256,8 +227,8 @@ module Meshtastic
             nonce = "#{nonce_packet_id}#{nonce_from_node}".b
 
             psk = psks[:LongFast]
-            target_chanel = decoded_payload_hash[:channel_id].to_s.to_sym
-            psk = psks[target_chanel] if psks.keys.include?(target_chanel)
+            target_channel = decoded_payload_hash[:channel_id].to_s.to_sym
+            psk = psks[target_channel] if psks.keys.include?(target_channel)
             dec_psk = Base64.strict_decode64(psk)
 
             cipher = OpenSSL::Cipher.new('AES-128-CTR')
@@ -275,8 +246,8 @@ module Meshtastic
             # payload = Meshtastic::Data.decode(message[:decoded][:payload]).to_h
             payload = message[:decoded][:payload]
             msg_type = message[:decoded][:portnum]
-            message[:decoded][:payload] = recursively_decode_payloads(
-              object: payload,
+            message[:decoded][:payload] = decode_payload(
+              payload: payload,
               msg_type: msg_type,
               gps_metadata: gps_metadata
             )
