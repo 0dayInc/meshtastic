@@ -128,22 +128,39 @@ module Meshtastic
         # when :ZPS_APP
         # decoder = Meshtastic::Zps
       end
+
       payload = decoder.decode(payload).to_h
-      if payload.keys.include?(:latitude_i) && payload.keys.include?(:longitude_i)
+
+      if payload.keys.include?(:latitude_i)
         lat = payload[:latitude_i] * 0.0000001
-        lon = payload[:longitude_i] * 0.0000001
         payload[:latitude] = lat
+      end
+
+      if payload.keys.include?(:longitude_i)
+        lon = payload[:longitude_i] * 0.0000001
         payload[:longitude] = lon
-        if gps_metadata
-          gps_search_resp = Meshtastic.gps_search(lat: lat, lon: lon)
-          payload[:gps_metadata] = gps_search_resp
-        end
       end
 
       if payload.keys.include?(:macaddr)
-        mac_hex_arr = payload[:macaddr].bytes.map { |byte| byte.to_s(16).rjust(2, '0') }
-        mac_str = mac_hex_arr.join(':')
-        payload[:macaddr] = mac_str
+        mac_raw = payload[:macaddr]
+        mac_hex_arr = mac_raw.bytes.map { |byte| byte.to_s(16).rjust(2, '0') }
+        mac_hex_str = mac_hex_arr.join(':')
+        payload[:macaddr_hex] = mac_hex_str
+      end
+
+      if payload.keys.include?(:time)
+        time_int = payload[:time]
+        time_utc = Time.at(time_int).utc if time_int.is_a?(Integer)
+        payload[:time_utc] = time_utc
+      end
+
+      if gps_metadata && payload[:latitude] && payload[:longitude]
+        lat = payload[:latitude]
+        lon = payload[:longitude]
+        unless lat.zero? && lon.zero?
+          gps_search_resp = gps_search(lat: lat, lon: lon)
+          payload[:gps_metadata] = gps_search_resp
+        end
       end
 
       payload
@@ -318,7 +335,7 @@ module Meshtastic
 
       gps_arr = [lat.to_f, lon.to_f]
 
-      Geocoder.search(gps_arr)
+      Geocoder.search(gps_arr).first.data
     rescue StandardError => e
       raise e
     end
