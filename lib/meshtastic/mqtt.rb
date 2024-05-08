@@ -115,9 +115,7 @@ module Meshtastic
         decoder = Meshtastic::Compressed
       when :STORE_FORWARD_APP
         decoder = Meshtastic::StoreAndForward
-      when :TEXT_MESSAGE_APP
-        # Unsure if this is the correct protobuf object
-        # decoder = Meshtastic::MqttClientProxyMessage
+      when :TEXT_MESSAGE_APP, :UNKNOWN_APP
         decoder = Meshtastic::Data
       when :TELEMETRY_APP
         decoder = Meshtastic::Telemetry
@@ -128,7 +126,7 @@ module Meshtastic
         # when :ZPS_APP
         # decoder = Meshtastic::Zps
       else
-        puts "WARNING: Can't decode\n#{payload}\nw/ portnum: #{msg_type.inspect}"
+        puts "WARNING: Can't decode\n#{payload.inspect}\nw/ portnum: #{msg_type}"
         return payload
       end
 
