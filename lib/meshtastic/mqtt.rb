@@ -208,6 +208,7 @@ module Meshtastic
 
       # NOTE: Use MQTT Explorer for topic discovery
       full_topic = "#{root_topic}/#{region}/#{channel}"
+      full_topic = "#{root_topic}/#{region}" if region == '#'
       puts "Subscribing to: #{full_topic}"
       mqtt_obj.subscribe(full_topic, qos)
 
