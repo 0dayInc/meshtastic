@@ -127,6 +127,9 @@ module Meshtastic
         decoder = Meshtastic::Waypoint
         # when :ZPS_APP
         # decoder = Meshtastic::Zps
+      else
+        puts "WARNING: Can't decode\n#{payload}\nw/ portnum: #{msg_type.inspect}"
+        return payload
       end
 
       payload = decoder.decode(payload).to_h
@@ -227,6 +230,8 @@ module Meshtastic
             decoded_payload_hash = decoded_payload.to_h
           end
 
+          next unless decoded_payload_hash[:packet].is_a?(Hash)
+
           message = decoded_payload_hash[:packet] if decoded_payload_hash.keys.include?(:packet)
           message[:topic] = raw_topic
           message[:node_id_from] = "!#{message[:from].to_i.to_s(16)}"
@@ -293,24 +298,26 @@ module Meshtastic
           next
         ensure
           filter_arr = [message[:id].to_s] if filter.nil?
-          flat_message = message.values.join(' ')
+          if message.is_a?(Hash)
+            flat_message = message.values.join(' ')
 
-          disp = true if filter_arr.first == message[:id] ||
-                         filter_arr.all? { |filter| flat_message.include?(filter) }
+            disp = true if filter_arr.first == message[:id] ||
+                           filter_arr.all? { |filter| flat_message.include?(filter) }
 
-          if disp
-            if block_given?
-              yield decoded_payload_hash
-            else
-              puts "\n"
-              puts '-' * 80
-              puts 'MSG:'
-              puts stdout_message
-              puts '-' * 80
-              puts "\n\n\n"
+            if disp
+              if block_given?
+                yield decoded_payload_hash
+              else
+                puts "\n"
+                puts '-' * 80
+                puts 'MSG:'
+                puts stdout_message
+                puts '-' * 80
+                puts "\n\n\n"
+              end
+              # else
+              # print '.'
             end
-          else
-            print '.'
           end
         end
       end
