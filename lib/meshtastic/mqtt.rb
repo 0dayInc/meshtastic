@@ -151,8 +151,10 @@ module Meshtastic
 
       if payload.keys.include?(:time)
         time_int = payload[:time]
-        time_utc = Time.at(time_int).utc.to_s if time_int.is_a?(Integer)
-        payload[:time_utc] = time_utc
+        if time_int.is_a?(Integer)
+          time_utc = Time.at(time_int).utc.to_s
+          payload[:time_utc] = time_utc
+        end
       end
 
       if gps_metadata && payload[:latitude] && payload[:longitude]
@@ -237,8 +239,10 @@ module Meshtastic
           message[:node_id_to] = "!#{message[:to].to_i.to_s(16)}"
           if message.keys.include?(:rx_time)
             rx_time_int = message[:rx_time]
-            rx_time_utc = Time.at(rx_time_int).utc.to_s if rx_time_int.is_a?(Integer)
-            message[:rx_time_utc] = rx_time_utc
+            if rx_time_int.is_a?(Integer)
+              rx_time_utc = Time.at(rx_time_int).utc.to_s
+              message[:rx_time_utc] = rx_time_utc
+            end
           end
 
           # If encrypted_message is not nil, then decrypt
