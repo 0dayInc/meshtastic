@@ -151,7 +151,7 @@ module Meshtastic
 
       if payload.keys.include?(:time)
         time_int = payload[:time]
-        time_utc = Time.at(time_int).utc if time_int.is_a?(Integer)
+        time_utc = Time.at(time_int).utc.to_s if time_int.is_a?(Integer)
         payload[:time_utc] = time_utc
       end
 
@@ -235,6 +235,11 @@ module Meshtastic
           message[:topic] = raw_topic
           message[:node_id_from] = "!#{message[:from].to_i.to_s(16)}"
           message[:node_id_to] = "!#{message[:to].to_i.to_s(16)}"
+          if message.keys.include?(:rx_time)
+            rx_time_int = message[:rx_time]
+            rx_time_utc = Time.at(rx_time_int).utc.to_s if rx_time_int.is_a?(Integer)
+            message[:rx_time_utc] = rx_time_utc
+          end
 
           # If encrypted_message is not nil, then decrypt
           # the message prior to decoding.
