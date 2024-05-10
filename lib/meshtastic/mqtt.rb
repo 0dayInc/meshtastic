@@ -248,7 +248,9 @@ module Meshtastic
           # If encrypted_message is not nil, then decrypt
           # the message prior to decoding.
           encrypted_message = message[:encrypted]
-          if encrypted_message.to_s.length.positive?
+          if encrypted_message.to_s.length.positive? &&
+             message[:topic]
+
             packet_id = message[:id]
             packet_from = message[:from]
 
@@ -257,8 +259,10 @@ module Meshtastic
             nonce = "#{nonce_packet_id}#{nonce_from_node}".b
 
             psk = psks[:LongFast]
-            target_channel = decoded_payload_hash[:channel_id].to_s.to_sym
+            target_channel = message[:topic].split('/')[-2].to_sym
+            puts "Target Channel: #{target_channel}"
             psk = psks[target_channel] if psks.keys.include?(target_channel)
+            puts "PSK: #{psk}"
             dec_psk = Base64.strict_decode64(psk)
 
             cipher = OpenSSL::Cipher.new('AES-128-CTR')
