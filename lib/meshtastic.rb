@@ -232,8 +232,15 @@ module Meshtastic
     end
     # puts mesh_packet.to_h
 
+    service_envelope = Meshtastic::ServiceEnvelope.new
+    service_envelope.packet = mesh_packet
+    service_envelope.channel_id = psks.keys.first
+    service_envelope.gateway_id = "!#{from.to_s(16).downcase}"
+
     to_radio = Meshtastic::ToRadio.new
-    to_radio.packet = mesh_packet
+    # This will knock nodes offline if uncommented.
+    # to_radio.packet = mesh_packet
+    to_radio.packet = service_envelope
 
     send_to_radio(to_radio: to_radio)
   rescue StandardError => e
