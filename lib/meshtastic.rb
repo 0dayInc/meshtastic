@@ -95,7 +95,7 @@ module Meshtastic
     data.payload = text
     data.portnum = port_num
     data.want_response = want_response
-    puts data.to_h
+    # puts data.to_h
 
     send_data(
       from: from,
@@ -230,7 +230,7 @@ module Meshtastic
 
       mesh_packet.encrypted = encrypted_payload
     end
-    puts mesh_packet.to_h
+    # puts mesh_packet.to_h
 
     to_radio = Meshtastic::ToRadio.new
     to_radio.packet = mesh_packet
