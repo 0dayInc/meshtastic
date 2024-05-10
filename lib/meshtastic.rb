@@ -53,6 +53,7 @@ module Meshtastic
   # Meshtastic.send_text(
   #   from: 'required - From ID (String or Integer)',
   #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
+  #   via: 'optional - :radio || :mqtt (Default: :radio)',
   #   channel: 'optional - Channel ID (Default: 0)',
   #   text: 'optional - Text Message (Default: SYN)',
   #   want_ack: 'optional - Want Acknowledgement (Default: false)',
@@ -72,6 +73,7 @@ module Meshtastic
     to_hex = to.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if to.is_a?(String)
     to = to_hex.to_i(16) if to_hex
 
+    via = opts[:via] ||= :radio
     channel = opts[:channel] ||= 0
     text = opts[:text] ||= 'SYN'
     want_ack = opts[:want_ack] ||= false
@@ -100,6 +102,7 @@ module Meshtastic
     send_data(
       from: from,
       to: to,
+      via: via,
       channel: channel,
       data: data,
       want_ack: want_ack,
@@ -117,6 +120,7 @@ module Meshtastic
   # Meshtastic.send_data(
   #   from: 'required - From ID (String or Integer)',
   #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
+  #   via: 'optional - :radio || :mqtt (Default: :radio)',
   #   channel: 'optional - Channel ID (Default: 0)',
   #   data: 'required - Data to Send',
   #   want_ack: 'optional - Want Acknowledgement (Default: false)',
@@ -135,6 +139,7 @@ module Meshtastic
     to_hex = to.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if to.is_a?(String)
     to = to_hex.to_i(16) if to_hex
 
+    via = opts[:via] ||= :radio
     channel = opts[:channel] ||= 0
     data = opts[:data]
     want_ack = opts[:want_ack] ||= false
@@ -160,6 +165,7 @@ module Meshtastic
       mesh_packet: mesh_packet,
       from: from,
       to: to,
+      via: via,
       channel: channel,
       want_ack: want_ack,
       hop_limit: hop_limit,
@@ -174,6 +180,7 @@ module Meshtastic
   #   mesh_packet: 'required - Mesh Packet to Send',
   #   from: 'required - From ID (String or Integer)',
   #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
+  #   via: 'optional - :radio || :mqtt (Default: :radio)',
   #   channel: 'optional - Channel ID (Default: 0)',
   #   want_ack: 'optional - Want Acknowledgement (Default: false)',
   #   hop_limit: 'optional - Hop Limit (Default: 3)',
@@ -190,6 +197,7 @@ module Meshtastic
     to_hex = to.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if to.is_a?(String)
     to = to_hex.to_i(16) if to_hex
 
+    via = opts[:via] ||= :radio
     channel = opts[:channel] ||= 0
     want_ack = opts[:want_ack] ||= false
     hop_limit = opts[:hop_limit] ||= 3
@@ -232,10 +240,21 @@ module Meshtastic
     end
     # puts mesh_packet.to_h
 
-    to_radio = Meshtastic::ToRadio.new
-    to_radio.packet = mesh_packet
-
-    send_to_radio(to_radio: to_radio)
+    # puts "Sending Packet via: #{via}"
+    case via
+    when :radio
+      to_radio = Meshtastic::ToRadio.new
+      to_radio.packet = mesh_packet
+      send_to_radio(to_radio: to_radio)
+    when :mqtt
+      service_envelope = Meshtastic::ServiceEnvelope.new
+      service_envelope.packet = mesh_packet
+      service_envelope.channel_id = psks.keys.first
+      service_envelope.gateway_id = "!#{from.to_s(16).downcase}"
+      send_to_mqtt(service_envelope: service_envelope)
+    else
+      raise "ERROR: Invalid via parameter: #{via}"
+    end
   rescue StandardError => e
     raise e
   end
@@ -261,6 +280,20 @@ module Meshtastic
     raise 'ERROR: Invalid ToRadio Message' unless to_radio.is_a?(Meshtastic::ToRadio)
 
     to_radio.to_proto
+  rescue StandardError => e
+    raise e
+  end
+
+  # Supported Method Parameters::
+  # Meshtastic.send_to_mqtt(
+  #   service_envelope: 'required - ServiceEnvelope Message to Send'
+  # )
+  public_class_method def self.send_to_mqtt(opts = {})
+    service_envelope = opts[:service_envelope]
+
+    raise 'ERROR: Invalid ServiceEnvelope Message' unless service_envelope.is_a?(Meshtastic::ServiceEnvelope)
+
+    service_envelope.to_proto
   rescue StandardError => e
     raise e
   end
