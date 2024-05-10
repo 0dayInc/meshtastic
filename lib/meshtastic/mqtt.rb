@@ -260,9 +260,7 @@ module Meshtastic
 
             psk = psks[:LongFast]
             target_channel = message[:topic].split('/')[-2].to_sym
-            puts "Target Channel: #{target_channel}"
             psk = psks[target_channel] if psks.keys.include?(target_channel)
-            puts "PSK: #{psk}"
             dec_psk = Base64.strict_decode64(psk)
 
             cipher = OpenSSL::Cipher.new('AES-128-CTR')
