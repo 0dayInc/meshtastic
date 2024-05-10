@@ -216,9 +216,15 @@ module Meshtastic
     mesh_packet.channel = channel
     mesh_packet.want_ack = want_ack
     mesh_packet.hop_limit = hop_limit
-    mesh_packet.id = generate_packet_id if mesh_packet.id.zero?
-    # mesh_packet.channel_id = psks.keys.first
-    # mesh_packet.gateway_id = "!#{from.to_s(16).downcase}"
+
+    # TODO: Implement strategy for obtaining last packet id
+    packet_id = 0
+    if mesh_packet.id.zero?
+      packet_id = generate_packet_id(
+        last_packet_id: packet_id
+      )
+    end
+    mesh_packet.id = packet_id
 
     if psks
       nonce_packet_id = [mesh_packet.id].pack('V').ljust(8, "\x00")
@@ -267,7 +273,8 @@ module Meshtastic
     last_packet_id = opts[:last_packet_id] ||= 0
     last_packet_id = 0 if last_packet_id.negative?
 
-    (last_packet_id + 1) & 0xffffffff
+    Random.rand(0xffffffff) if last_packet_id.zero?
+    (last_packet_id + 1) & 0xffffffff if last_packet_id.positive?
   end
 
   # Supported Method Parameters::
