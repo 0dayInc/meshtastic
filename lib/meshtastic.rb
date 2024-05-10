@@ -273,8 +273,10 @@ module Meshtastic
     last_packet_id = opts[:last_packet_id] ||= 0
     last_packet_id = 0 if last_packet_id.negative?
 
-    Random.rand(0xffffffff) if last_packet_id.zero?
-    (last_packet_id + 1) & 0xffffffff if last_packet_id.positive?
+    packet_id = Random.rand(0xffffffff) if last_packet_id.zero?
+    packet_id = (last_packet_id + 1) & 0xffffffff if last_packet_id.positive?
+
+    packet_id
   end
 
   # Supported Method Parameters::
