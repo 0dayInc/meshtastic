@@ -221,7 +221,7 @@ module Meshtastic
     packet_id = 0
     if mesh_packet.id.zero?
       packet_id = generate_packet_id(
-        last_packet_id: packet_id
+        last_packet_id: mesh_packet.id
       )
     end
     mesh_packet.id = packet_id
