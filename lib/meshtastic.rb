@@ -53,6 +53,7 @@ module Meshtastic
   # Meshtastic.send_text(
   #   from: 'required - From ID (String or Integer)',
   #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
+  #   last_packet_id: 'optional - Last Packet ID (Default: 0)',
   #   via: 'optional - :radio || :mqtt (Default: :radio)',
   #   channel: 'optional - Channel ID (Default: 0)',
   #   text: 'optional - Text Message (Default: SYN)',
@@ -73,6 +74,7 @@ module Meshtastic
     to_hex = to.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if to.is_a?(String)
     to = to_hex.to_i(16) if to_hex
 
+    last_packet_id = opts[:last_packet_id] ||= 0
     via = opts[:via] ||= :radio
     channel = opts[:channel] ||= 0
     text = opts[:text] ||= 'SYN'
@@ -102,6 +104,7 @@ module Meshtastic
     send_data(
       from: from,
       to: to,
+      last_packet_id: last_packet_id,
       via: via,
       channel: channel,
       data: data,
@@ -120,6 +123,7 @@ module Meshtastic
   # Meshtastic.send_data(
   #   from: 'required - From ID (String or Integer)',
   #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
+  #   last_packet_id: 'optional - Last Packet ID (Default: 0)',
   #   via: 'optional - :radio || :mqtt (Default: :radio)',
   #   channel: 'optional - Channel ID (Default: 0)',
   #   data: 'required - Data to Send',
@@ -139,6 +143,7 @@ module Meshtastic
     to_hex = to.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if to.is_a?(String)
     to = to_hex.to_i(16) if to_hex
 
+    last_packet_id = opts[:last_packet_id] ||= 0
     via = opts[:via] ||= :radio
     channel = opts[:channel] ||= 0
     data = opts[:data]
@@ -165,6 +170,7 @@ module Meshtastic
       mesh_packet: mesh_packet,
       from: from,
       to: to,
+      last_packet_id: last_packet_id,
       via: via,
       channel: channel,
       want_ack: want_ack,
@@ -180,6 +186,7 @@ module Meshtastic
   #   mesh_packet: 'required - Mesh Packet to Send',
   #   from: 'required - From ID (String or Integer)',
   #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
+  #   last_packet_id: 'optional - Last Packet ID (Default: 0)',
   #   via: 'optional - :radio || :mqtt (Default: :radio)',
   #   channel: 'optional - Channel ID (Default: 0)',
   #   want_ack: 'optional - Want Acknowledgement (Default: false)',
@@ -197,6 +204,7 @@ module Meshtastic
     to_hex = to.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if to.is_a?(String)
     to = to_hex.to_i(16) if to_hex
 
+    last_packet_id = opts[:last_packet_id] ||= 0
     via = opts[:via] ||= :radio
     channel = opts[:channel] ||= 0
     want_ack = opts[:want_ack] ||= false
@@ -216,15 +224,7 @@ module Meshtastic
     mesh_packet.channel = channel
     mesh_packet.want_ack = want_ack
     mesh_packet.hop_limit = hop_limit
-
-    # TODO: Implement strategy for obtaining last packet id
-    packet_id = 0
-    if mesh_packet.id.zero?
-      packet_id = generate_packet_id(
-        last_packet_id: mesh_packet.id
-      )
-    end
-    mesh_packet.id = packet_id
+    mesh_packet.id = generate_packet_id(last_packet_id: last_packet_id)
 
     if psks
       nonce_packet_id = [mesh_packet.id].pack('V').ljust(8, "\x00")
@@ -249,6 +249,9 @@ module Meshtastic
     # puts "Sending Packet via: #{via}"
     case via
     when :radio
+      # Sending a to_radio message over mqtt
+      # causes unpredictable behavior
+      # (e.g. disconnecting node(s) from bluetooth)
       to_radio = Meshtastic::ToRadio.new
       to_radio.packet = mesh_packet
       send_to_radio(to_radio: to_radio)
