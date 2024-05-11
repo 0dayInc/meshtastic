@@ -291,18 +291,21 @@ module Meshtastic
             message[:stdout] = 'pretty'
             stdout_message = JSON.pretty_generate(decoded_payload_hash)
           end
-        rescue Google::Protobuf::ParseError,
+        rescue Encoding::CompatibilityError,
+               Google::Protobuf::ParseError,
                JSON::GeneratorError,
                ArgumentError => e
 
-          message[:decrypted] = e.message if e.message.include?('key must be')
-          message[:decrypted] = 'unable to decrypt - psk?' if e.message.include?('occurred during parsing')
-          decoded_payload_hash[:packet] = message
-          unless block_given?
-            puts "WARNING: #{e.inspect} - MSG IS >>>"
-            # puts e.backtrace
-            message[:stdout] = 'inspect'
-            stdout_message = decoded_payload_hash.inspect
+          unless e.is_a?(Encoding::CompatibilityError)
+            message[:decrypted] = e.message if e.message.include?('key must be')
+            message[:decrypted] = 'unable to decrypt - psk?' if e.message.include?('occurred during parsing')
+            decoded_payload_hash[:packet] = message
+            unless block_given?
+              puts "WARNING: #{e.inspect} - MSG IS >>>"
+              # puts e.backtrace
+              message[:stdout] = 'inspect'
+              stdout_message = decoded_payload_hash.inspect
+            end
           end
 
           next
