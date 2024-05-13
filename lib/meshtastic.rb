@@ -55,7 +55,7 @@ module Meshtastic
   #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
   #   last_packet_id: 'optional - Last Packet ID (Default: 0)',
   #   via: 'optional - :radio || :mqtt (Default: :radio)',
-  #   channel: 'optional - Channel ID (Default: 0)',
+  #   channel: 'optional - Channel ID (Default: 6)',
   #   text: 'optional - Text Message (Default: SYN)',
   #   want_ack: 'optional - Want Acknowledgement (Default: false)',
   #   want_response: 'optional - Want Response (Default: false)',
@@ -76,7 +76,7 @@ module Meshtastic
 
     last_packet_id = opts[:last_packet_id] ||= 0
     via = opts[:via] ||= :radio
-    channel = opts[:channel] ||= 0
+    channel = opts[:channel] ||= 6
     text = opts[:text] ||= 'SYN'
     want_ack = opts[:want_ack] ||= false
     want_response = opts[:want_response] ||= false

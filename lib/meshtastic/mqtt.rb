@@ -167,7 +167,8 @@ module Meshtastic
       end
 
       payload
-    rescue Google::Protobuf::ParseError
+    rescue Encoding::CompatibilityError,
+           Google::Protobuf::ParseError
       payload
     rescue StandardError => e
       raise e
@@ -340,6 +341,32 @@ module Meshtastic
       raise e
     ensure
       mqtt_obj.disconnect if mqtt_obj
+    end
+
+    # Supported Method Parameters::
+    # Meshtastic.send_text(
+    #   mqtt_obj: 'required - mqtt_obj returned from #connect method',
+    #   from: ' required - From ID (String or Integer)',
+    #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
+    #   topic: 'optional - topic to publish to (default: "msh/US/2/e/LongFast/1")',
+    #   channel: 'optional - channel ID (Default: 6)',
+    #   text: 'optional - Text Message (Default: SYN)',
+    #   want_ack: 'optional - Want Acknowledgement (Default: false)',
+    #   want_response: 'optional - Want Response (Default: false)',
+    #   hop_limit: 'optional - Hop Limit (Default: 3)',
+    #   on_response: 'optional - Callback on Response',
+    #   psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: "AQ==" })'
+    # )
+    public_class_method def self.send_text(opts = {})
+      mqtt_obj = opts[:mqtt_obj]
+      topic = opts[:topic] ||= 'msh/US/2/e/LongFast/#'
+      opts[:via] = :mqtt
+
+      protobuf_text = Meshtastic.send_text(opts)
+
+      mqtt_obj.publish(topic, protobuf_text)
+    rescue StandardError => e
+      raise e
     end
 
     # Supported Method Parameters::
