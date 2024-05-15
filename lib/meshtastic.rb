@@ -96,7 +96,7 @@ module Meshtastic
     port_num = Meshtastic::PortNum::TEXT_MESSAGE_APP
 
     data = Meshtastic::Data.new
-    data.payload = text.encode('UTF-8')
+    data.payload = text
     data.portnum = port_num
     data.want_response = want_response
     # puts data.to_h
@@ -229,7 +229,7 @@ module Meshtastic
     if psks
       nonce_packet_id = [mesh_packet.id].pack('V').ljust(8, "\x00")
       nonce_from_node = [from].pack('V').ljust(8, "\x00")
-      nonce = "#{nonce_packet_id}#{nonce_from_node}".b
+      nonce = "#{nonce_packet_id}#{nonce_from_node}"
 
       psk = psks[psks.keys.first]
       dec_psk = Base64.strict_decode64(psk)

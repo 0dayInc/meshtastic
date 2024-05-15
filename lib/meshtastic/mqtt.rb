@@ -257,7 +257,7 @@ module Meshtastic
 
             nonce_packet_id = [packet_id].pack('V').ljust(8, "\x00")
             nonce_from_node = [packet_from].pack('V').ljust(8, "\x00")
-            nonce = "#{nonce_packet_id}#{nonce_from_node}".b
+            nonce = "#{nonce_packet_id}#{nonce_from_node}"
 
             psk = psks[:LongFast]
             target_channel = message[:topic].split('/')[-2].to_sym
