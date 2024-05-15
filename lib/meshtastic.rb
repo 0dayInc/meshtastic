@@ -96,7 +96,7 @@ module Meshtastic
     port_num = Meshtastic::PortNum::TEXT_MESSAGE_APP
 
     data = Meshtastic::Data.new
-    data.payload = text
+    data.payload = text.force_encoding('ASCII-8BIT')
     data.portnum = port_num
     data.want_response = want_response
     # puts data.to_h
