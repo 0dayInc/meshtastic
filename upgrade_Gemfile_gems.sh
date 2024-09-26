@@ -6,9 +6,8 @@ cat Gemfile | awk '{print $2}' | grep -E "^'.+$" | grep -v -e rubygems.org | whi
   os=`uname -s`
   if [[ $os == 'Linux' ]]; then
     case $this_gem in
-      'bundler')
-	# sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '>=${latest_version}'/g" Gemfile
-	echo 'SKIPPING bundler mutation in Gemfile.';;
+      'bundler'|'rubocop'|'rubocop-rake'|'rubocop-rspec')
+	sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '>=${latest_version}'/g" Gemfile;;
       'google-protobuf')
         same_version=`protoc --version | awk '{ print $NF}'`
 	sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '${same_version}'/g" Gemfile;;
