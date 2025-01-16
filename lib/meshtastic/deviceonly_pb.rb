@@ -4,10 +4,9 @@
 require 'google/protobuf'
 
 require 'meshtastic/channel_pb'
-require 'meshtastic/localonly_pb'
 require 'meshtastic/mesh_pb'
-require 'meshtastic/module_config_pb'
 require 'meshtastic/telemetry_pb'
+require 'meshtastic/config_pb'
 require 'nanopb_pb'
 
 Google::Protobuf::DescriptorPool.generated_pool.build do
@@ -19,17 +18,28 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :time, :fixed32, 4
       optional :location_source, :enum, 5, "meshtastic.Position.LocSource"
     end
+    add_message "meshtastic.UserLite" do
+      optional :macaddr, :bytes, 1
+      optional :long_name, :string, 2
+      optional :short_name, :string, 3
+      optional :hw_model, :enum, 4, "meshtastic.HardwareModel"
+      optional :is_licensed, :bool, 5
+      optional :role, :enum, 6, "meshtastic.Config.DeviceConfig.Role"
+      optional :public_key, :bytes, 7
+    end
     add_message "meshtastic.NodeInfoLite" do
       optional :num, :uint32, 1
-      optional :user, :message, 2, "meshtastic.User"
+      optional :user, :message, 2, "meshtastic.UserLite"
       optional :position, :message, 3, "meshtastic.PositionLite"
       optional :snr, :float, 4
       optional :last_heard, :fixed32, 5
       optional :device_metrics, :message, 6, "meshtastic.DeviceMetrics"
       optional :channel, :uint32, 7
       optional :via_mqtt, :bool, 8
-      optional :hops_away, :uint32, 9
+      proto3_optional :hops_away, :uint32, 9
       optional :is_favorite, :bool, 10
+      optional :is_ignored, :bool, 11
+      optional :next_hop, :uint32, 12
     end
     add_message "meshtastic.DeviceState" do
       optional :my_node, :message, 2, "meshtastic.MyNodeInfo"
@@ -47,29 +57,13 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       repeated :channels, :message, 1, "meshtastic.Channel"
       optional :version, :uint32, 2
     end
-    add_message "meshtastic.OEMStore" do
-      optional :oem_icon_width, :uint32, 1
-      optional :oem_icon_height, :uint32, 2
-      optional :oem_icon_bits, :bytes, 3
-      optional :oem_font, :enum, 4, "meshtastic.ScreenFonts"
-      optional :oem_text, :string, 5
-      optional :oem_aes_key, :bytes, 6
-      optional :oem_local_config, :message, 7, "meshtastic.LocalConfig"
-      optional :oem_local_module_config, :message, 8, "meshtastic.LocalModuleConfig"
-    end
-    add_enum "meshtastic.ScreenFonts" do
-      value :FONT_SMALL, 0
-      value :FONT_MEDIUM, 1
-      value :FONT_LARGE, 2
-    end
   end
 end
 
 module Meshtastic
   PositionLite = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.PositionLite").msgclass
+  UserLite = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.UserLite").msgclass
   NodeInfoLite = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.NodeInfoLite").msgclass
   DeviceState = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.DeviceState").msgclass
   ChannelFile = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ChannelFile").msgclass
-  OEMStore = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.OEMStore").msgclass
-  ScreenFonts = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ScreenFonts").enummodule
 end

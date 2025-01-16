@@ -8,10 +8,12 @@ require 'meshtastic/config_pb'
 require 'meshtastic/connection_status_pb'
 require 'meshtastic/mesh_pb'
 require 'meshtastic/module_config_pb'
+require 'meshtastic/device_ui_pb'
 
 Google::Protobuf::DescriptorPool.generated_pool.build do
   add_file("meshtastic/admin.proto", :syntax => :proto3) do
     add_message "meshtastic.AdminMessage" do
+      optional :session_passkey, :bytes, 101
       oneof :payload_variant do
         optional :get_channel_request, :uint32, 1
         optional :get_channel_response, :message, 2, "meshtastic.Channel"
@@ -34,6 +36,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
         optional :get_node_remote_hardware_pins_response, :message, 20, "meshtastic.NodeRemoteHardwarePinsResponse"
         optional :enter_dfu_mode_request, :bool, 21
         optional :delete_file_request, :string, 22
+        optional :set_scale, :uint32, 23
         optional :set_owner, :message, 32, "meshtastic.User"
         optional :set_channel, :message, 33, "meshtastic.Channel"
         optional :set_config, :message, 34, "meshtastic.Config"
@@ -45,13 +48,20 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
         optional :remove_favorite_node, :uint32, 40
         optional :set_fixed_position, :message, 41, "meshtastic.Position"
         optional :remove_fixed_position, :bool, 42
+        optional :set_time_only, :fixed32, 43
+        optional :get_ui_config_request, :bool, 44
+        optional :get_ui_config_response, :message, 45, "meshtastic.DeviceUIConfig"
+        optional :store_ui_config, :message, 46, "meshtastic.DeviceUIConfig"
+        optional :set_ignored_node, :uint32, 47
+        optional :remove_ignored_node, :uint32, 48
         optional :begin_edit_settings, :bool, 64
         optional :commit_edit_settings, :bool, 65
+        optional :factory_reset_device, :int32, 94
         optional :reboot_ota_seconds, :int32, 95
         optional :exit_simulator, :bool, 96
         optional :reboot_seconds, :int32, 97
         optional :shutdown_seconds, :int32, 98
-        optional :factory_reset, :int32, 99
+        optional :factory_reset_config, :int32, 99
         optional :nodedb_reset, :int32, 100
       end
     end
@@ -63,6 +73,9 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :DISPLAY_CONFIG, 4
       value :LORA_CONFIG, 5
       value :BLUETOOTH_CONFIG, 6
+      value :SECURITY_CONFIG, 7
+      value :SESSIONKEY_CONFIG, 8
+      value :DEVICEUI_CONFIG, 9
     end
     add_enum "meshtastic.AdminMessage.ModuleConfigType" do
       value :MQTT_CONFIG, 0

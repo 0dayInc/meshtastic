@@ -17,6 +17,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :WAYPOINT_APP, 8
       value :AUDIO_APP, 9
       value :DETECTION_SENSOR_APP, 10
+      value :ALERT_APP, 11
       value :REPLY_APP, 32
       value :IP_TUNNEL_APP, 33
       value :PAXCOUNTER_APP, 34
@@ -30,6 +31,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :NEIGHBORINFO_APP, 71
       value :ATAK_PLUGIN, 72
       value :MAP_REPORT_APP, 73
+      value :POWERSTRESS_APP, 74
       value :PRIVATE_APP, 256
       value :ATAK_FORWARDER, 257
       value :MAX, 511
