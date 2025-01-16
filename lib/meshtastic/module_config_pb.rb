@@ -47,6 +47,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
     add_message "meshtastic.ModuleConfig.NeighborInfoConfig" do
       optional :enabled, :bool, 1
       optional :update_interval, :uint32, 2
+      optional :transmit_over_lora, :bool, 3
     end
     add_message "meshtastic.ModuleConfig.DetectionSensorConfig" do
       optional :enabled, :bool, 1
@@ -55,8 +56,16 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :send_bell, :bool, 4
       optional :name, :string, 5
       optional :monitor_pin, :uint32, 6
-      optional :detection_triggered_high, :bool, 7
+      optional :detection_trigger_type, :enum, 7, "meshtastic.ModuleConfig.DetectionSensorConfig.TriggerType"
       optional :use_pullup, :bool, 8
+    end
+    add_enum "meshtastic.ModuleConfig.DetectionSensorConfig.TriggerType" do
+      value :LOGIC_LOW, 0
+      value :LOGIC_HIGH, 1
+      value :FALLING_EDGE, 2
+      value :RISING_EDGE, 3
+      value :EITHER_EDGE_ACTIVE_LOW, 4
+      value :EITHER_EDGE_ACTIVE_HIGH, 5
     end
     add_message "meshtastic.ModuleConfig.AudioConfig" do
       optional :codec2_enabled, :bool, 1
@@ -81,6 +90,8 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
     add_message "meshtastic.ModuleConfig.PaxcounterConfig" do
       optional :enabled, :bool, 1
       optional :paxcounter_update_interval, :uint32, 2
+      optional :wifi_threshold, :int32, 3
+      optional :ble_threshold, :int32, 4
     end
     add_message "meshtastic.ModuleConfig.SerialConfig" do
       optional :enabled, :bool, 1
@@ -117,6 +128,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :TEXTMSG, 3
       value :NMEA, 4
       value :CALTOPO, 5
+      value :WS85, 6
     end
     add_message "meshtastic.ModuleConfig.ExternalNotificationConfig" do
       optional :enabled, :bool, 1
@@ -141,6 +153,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :records, :uint32, 3
       optional :history_return_max, :uint32, 4
       optional :history_return_window, :uint32, 5
+      optional :is_server, :bool, 6
     end
     add_message "meshtastic.ModuleConfig.RangeTestConfig" do
       optional :enabled, :bool, 1
@@ -158,6 +171,9 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :power_measurement_enabled, :bool, 8
       optional :power_update_interval, :uint32, 9
       optional :power_screen_enabled, :bool, 10
+      optional :health_measurement_enabled, :bool, 11
+      optional :health_update_interval, :uint32, 12
+      optional :health_screen_enabled, :bool, 13
     end
     add_message "meshtastic.ModuleConfig.CannedMessageConfig" do
       optional :rotary1_enabled, :bool, 1
@@ -209,6 +225,7 @@ module Meshtastic
   ModuleConfig::RemoteHardwareConfig = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ModuleConfig.RemoteHardwareConfig").msgclass
   ModuleConfig::NeighborInfoConfig = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ModuleConfig.NeighborInfoConfig").msgclass
   ModuleConfig::DetectionSensorConfig = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ModuleConfig.DetectionSensorConfig").msgclass
+  ModuleConfig::DetectionSensorConfig::TriggerType = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ModuleConfig.DetectionSensorConfig.TriggerType").enummodule
   ModuleConfig::AudioConfig = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ModuleConfig.AudioConfig").msgclass
   ModuleConfig::AudioConfig::Audio_Baud = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ModuleConfig.AudioConfig.Audio_Baud").enummodule
   ModuleConfig::PaxcounterConfig = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ModuleConfig.PaxcounterConfig").msgclass

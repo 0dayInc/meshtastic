@@ -17,6 +17,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :lora, :message, 6, "meshtastic.Config.LoRaConfig"
       optional :bluetooth, :message, 7, "meshtastic.Config.BluetoothConfig"
       optional :version, :uint32, 8
+      optional :security, :message, 9, "meshtastic.Config.SecurityConfig"
     end
     add_message "meshtastic.LocalModuleConfig" do
       optional :mqtt, :message, 1, "meshtastic.ModuleConfig.MQTTConfig"

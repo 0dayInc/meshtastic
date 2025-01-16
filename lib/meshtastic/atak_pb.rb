@@ -13,11 +13,13 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       oneof :payload_variant do
         optional :pli, :message, 5, "meshtastic.PLI"
         optional :chat, :message, 6, "meshtastic.GeoChat"
+        optional :detail, :bytes, 7
       end
     end
     add_message "meshtastic.GeoChat" do
       optional :message, :string, 1
       proto3_optional :to, :string, 2
+      proto3_optional :to_callsign, :string, 3
     end
     add_message "meshtastic.Group" do
       optional :role, :enum, 1, "meshtastic.MemberRole"

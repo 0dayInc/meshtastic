@@ -3,6 +3,8 @@
 
 require 'google/protobuf'
 
+require 'meshtastic/device_ui_pb'
+
 Google::Protobuf::DescriptorPool.generated_pool.build do
   add_file("meshtastic/config.proto", :syntax => :proto3) do
     add_message "meshtastic.Config" do
@@ -14,12 +16,14 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
         optional :display, :message, 5, "meshtastic.Config.DisplayConfig"
         optional :lora, :message, 6, "meshtastic.Config.LoRaConfig"
         optional :bluetooth, :message, 7, "meshtastic.Config.BluetoothConfig"
+        optional :security, :message, 8, "meshtastic.Config.SecurityConfig"
+        optional :sessionkey, :message, 9, "meshtastic.Config.SessionkeyConfig"
+        optional :device_ui, :message, 10, "meshtastic.DeviceUIConfig"
       end
     end
     add_message "meshtastic.Config.DeviceConfig" do
       optional :role, :enum, 1, "meshtastic.Config.DeviceConfig.Role"
       optional :serial_enabled, :bool, 2
-      optional :debug_log_enabled, :bool, 3
       optional :button_gpio, :uint32, 4
       optional :buzzer_gpio, :uint32, 5
       optional :rebroadcast_mode, :enum, 6, "meshtastic.Config.DeviceConfig.RebroadcastMode"
@@ -42,12 +46,15 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :CLIENT_HIDDEN, 8
       value :LOST_AND_FOUND, 9
       value :TAK_TRACKER, 10
+      value :ROUTER_LATE, 11
     end
     add_enum "meshtastic.Config.DeviceConfig.RebroadcastMode" do
       value :ALL, 0
       value :ALL_SKIP_DECODING, 1
       value :LOCAL_ONLY, 2
       value :KNOWN_ONLY, 3
+      value :NONE, 4
+      value :CORE_PORTNUMS_ONLY, 5
     end
     add_message "meshtastic.Config.PositionConfig" do
       optional :position_broadcast_secs, :uint32, 1
@@ -91,6 +98,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :ls_secs, :uint32, 7
       optional :min_wake_secs, :uint32, 8
       optional :device_battery_ina_address, :uint32, 9
+      optional :powermon_enables, :uint64, 32
     end
     add_message "meshtastic.Config.NetworkConfig" do
       optional :wifi_enabled, :bool, 1
@@ -101,6 +109,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :address_mode, :enum, 7, "meshtastic.Config.NetworkConfig.AddressMode"
       optional :ipv4_config, :message, 8, "meshtastic.Config.NetworkConfig.IpV4Config"
       optional :rsyslog_server, :string, 9
+      optional :enabled_protocols, :uint32, 10
     end
     add_message "meshtastic.Config.NetworkConfig.IpV4Config" do
       optional :ip, :fixed32, 1
@@ -111,6 +120,10 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
     add_enum "meshtastic.Config.NetworkConfig.AddressMode" do
       value :DHCP, 0
       value :STATIC, 1
+    end
+    add_enum "meshtastic.Config.NetworkConfig.ProtocolFlags" do
+      value :NO_BROADCAST, 0
+      value :UDP_BROADCAST, 1
     end
     add_message "meshtastic.Config.DisplayConfig" do
       optional :screen_on_secs, :uint32, 1
@@ -123,6 +136,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :displaymode, :enum, 8, "meshtastic.Config.DisplayConfig.DisplayMode"
       optional :heading_bold, :bool, 9
       optional :wake_on_tap_or_motion, :bool, 10
+      optional :compass_orientation, :enum, 11, "meshtastic.Config.DisplayConfig.CompassOrientation"
     end
     add_enum "meshtastic.Config.DisplayConfig.GpsCoordinateFormat" do
       value :DEC, 0
@@ -148,6 +162,16 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :INVERTED, 2
       value :COLOR, 3
     end
+    add_enum "meshtastic.Config.DisplayConfig.CompassOrientation" do
+      value :DEGREES_0, 0
+      value :DEGREES_90, 1
+      value :DEGREES_180, 2
+      value :DEGREES_270, 3
+      value :DEGREES_0_INVERTED, 4
+      value :DEGREES_90_INVERTED, 5
+      value :DEGREES_180_INVERTED, 6
+      value :DEGREES_270_INVERTED, 7
+    end
     add_message "meshtastic.Config.LoRaConfig" do
       optional :use_preset, :bool, 1
       optional :modem_preset, :enum, 2, "meshtastic.Config.LoRaConfig.ModemPreset"
@@ -163,8 +187,10 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :override_duty_cycle, :bool, 12
       optional :sx126x_rx_boosted_gain, :bool, 13
       optional :override_frequency, :float, 14
+      optional :pa_fan_disabled, :bool, 15
       repeated :ignore_incoming, :uint32, 103
       optional :ignore_mqtt, :bool, 104
+      optional :config_ok_to_mqtt, :bool, 105
     end
     add_enum "meshtastic.Config.LoRaConfig.RegionCode" do
       value :UNSET, 0
@@ -186,6 +212,9 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :MY_433, 16
       value :MY_919, 17
       value :SG_923, 18
+      value :PH_433, 19
+      value :PH_868, 20
+      value :PH_915, 21
     end
     add_enum "meshtastic.Config.LoRaConfig.ModemPreset" do
       value :LONG_FAST, 0
@@ -196,6 +225,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :SHORT_SLOW, 5
       value :SHORT_FAST, 6
       value :LONG_MODERATE, 7
+      value :SHORT_TURBO, 8
     end
     add_message "meshtastic.Config.BluetoothConfig" do
       optional :enabled, :bool, 1
@@ -206,6 +236,17 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :RANDOM_PIN, 0
       value :FIXED_PIN, 1
       value :NO_PIN, 2
+    end
+    add_message "meshtastic.Config.SecurityConfig" do
+      optional :public_key, :bytes, 1
+      optional :private_key, :bytes, 2
+      repeated :admin_key, :bytes, 3
+      optional :is_managed, :bool, 4
+      optional :serial_enabled, :bool, 5
+      optional :debug_log_api_enabled, :bool, 6
+      optional :admin_channel_enabled, :bool, 8
+    end
+    add_message "meshtastic.Config.SessionkeyConfig" do
     end
   end
 end
@@ -222,14 +263,18 @@ module Meshtastic
   Config::NetworkConfig = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.NetworkConfig").msgclass
   Config::NetworkConfig::IpV4Config = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.NetworkConfig.IpV4Config").msgclass
   Config::NetworkConfig::AddressMode = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.NetworkConfig.AddressMode").enummodule
+  Config::NetworkConfig::ProtocolFlags = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.NetworkConfig.ProtocolFlags").enummodule
   Config::DisplayConfig = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.DisplayConfig").msgclass
   Config::DisplayConfig::GpsCoordinateFormat = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.DisplayConfig.GpsCoordinateFormat").enummodule
   Config::DisplayConfig::DisplayUnits = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.DisplayConfig.DisplayUnits").enummodule
   Config::DisplayConfig::OledType = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.DisplayConfig.OledType").enummodule
   Config::DisplayConfig::DisplayMode = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.DisplayConfig.DisplayMode").enummodule
+  Config::DisplayConfig::CompassOrientation = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.DisplayConfig.CompassOrientation").enummodule
   Config::LoRaConfig = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.LoRaConfig").msgclass
   Config::LoRaConfig::RegionCode = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.LoRaConfig.RegionCode").enummodule
   Config::LoRaConfig::ModemPreset = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.LoRaConfig.ModemPreset").enummodule
   Config::BluetoothConfig = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.BluetoothConfig").msgclass
   Config::BluetoothConfig::PairingMode = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.BluetoothConfig.PairingMode").enummodule
+  Config::SecurityConfig = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.SecurityConfig").msgclass
+  Config::SessionkeyConfig = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Config.SessionkeyConfig").msgclass
 end

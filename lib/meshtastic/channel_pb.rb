@@ -16,6 +16,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
     end
     add_message "meshtastic.ModuleSettings" do
       optional :position_precision, :uint32, 1
+      optional :is_client_muted, :bool, 2
     end
     add_message "meshtastic.Channel" do
       optional :index, :int32, 1

@@ -9,26 +9,27 @@ require 'meshtastic/module_config_pb'
 require 'meshtastic/portnums_pb'
 require 'meshtastic/telemetry_pb'
 require 'meshtastic/xmodem_pb'
+require 'meshtastic/device_ui_pb'
 
 Google::Protobuf::DescriptorPool.generated_pool.build do
   add_file("meshtastic/mesh.proto", :syntax => :proto3) do
     add_message "meshtastic.Position" do
-      optional :latitude_i, :sfixed32, 1
-      optional :longitude_i, :sfixed32, 2
-      optional :altitude, :int32, 3
+      proto3_optional :latitude_i, :sfixed32, 1
+      proto3_optional :longitude_i, :sfixed32, 2
+      proto3_optional :altitude, :int32, 3
       optional :time, :fixed32, 4
       optional :location_source, :enum, 5, "meshtastic.Position.LocSource"
       optional :altitude_source, :enum, 6, "meshtastic.Position.AltSource"
       optional :timestamp, :fixed32, 7
       optional :timestamp_millis_adjust, :int32, 8
-      optional :altitude_hae, :sint32, 9
-      optional :altitude_geoidal_separation, :sint32, 10
+      proto3_optional :altitude_hae, :sint32, 9
+      proto3_optional :altitude_geoidal_separation, :sint32, 10
       optional :PDOP, :uint32, 11
       optional :HDOP, :uint32, 12
       optional :VDOP, :uint32, 13
       optional :gps_accuracy, :uint32, 14
-      optional :ground_speed, :uint32, 15
-      optional :ground_track, :uint32, 16
+      proto3_optional :ground_speed, :uint32, 15
+      proto3_optional :ground_track, :uint32, 16
       optional :fix_quality, :uint32, 17
       optional :fix_type, :uint32, 18
       optional :sats_in_view, :uint32, 19
@@ -58,9 +59,13 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :hw_model, :enum, 5, "meshtastic.HardwareModel"
       optional :is_licensed, :bool, 6
       optional :role, :enum, 7, "meshtastic.Config.DeviceConfig.Role"
+      optional :public_key, :bytes, 8
     end
     add_message "meshtastic.RouteDiscovery" do
       repeated :route, :fixed32, 1
+      repeated :snr_towards, :int32, 2
+      repeated :route_back, :fixed32, 3
+      repeated :snr_back, :int32, 4
     end
     add_message "meshtastic.Routing" do
       oneof :variant do
@@ -82,6 +87,10 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :DUTY_CYCLE_LIMIT, 9
       value :BAD_REQUEST, 32
       value :NOT_AUTHORIZED, 33
+      value :PKI_FAILED, 34
+      value :PKI_UNKNOWN_PUBKEY, 35
+      value :ADMIN_BAD_SESSION_KEY, 36
+      value :ADMIN_PUBLIC_KEY_UNAUTHORIZED, 37
     end
     add_message "meshtastic.Data" do
       optional :portnum, :enum, 1, "meshtastic.PortNum"
@@ -92,11 +101,12 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :request_id, :fixed32, 6
       optional :reply_id, :fixed32, 7
       optional :emoji, :fixed32, 8
+      proto3_optional :bitfield, :uint32, 9
     end
     add_message "meshtastic.Waypoint" do
       optional :id, :uint32, 1
-      optional :latitude_i, :sfixed32, 2
-      optional :longitude_i, :sfixed32, 3
+      proto3_optional :latitude_i, :sfixed32, 2
+      proto3_optional :longitude_i, :sfixed32, 3
       optional :expire, :uint32, 4
       optional :locked_to, :uint32, 5
       optional :name, :string, 6
@@ -125,6 +135,11 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :delayed, :enum, 13, "meshtastic.MeshPacket.Delayed"
       optional :via_mqtt, :bool, 14
       optional :hop_start, :uint32, 15
+      optional :public_key, :bytes, 16
+      optional :pki_encrypted, :bool, 17
+      optional :next_hop, :uint32, 18
+      optional :relay_node, :uint32, 19
+      optional :tx_after, :uint32, 20
       oneof :payload_variant do
         optional :decoded, :message, 4, "meshtastic.Data"
         optional :encrypted, :bytes, 5
@@ -136,6 +151,9 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :BACKGROUND, 10
       value :DEFAULT, 64
       value :RELIABLE, 70
+      value :RESPONSE, 80
+      value :HIGH, 100
+      value :ALERT, 110
       value :ACK, 120
       value :MAX, 127
     end
@@ -153,13 +171,16 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :device_metrics, :message, 6, "meshtastic.DeviceMetrics"
       optional :channel, :uint32, 7
       optional :via_mqtt, :bool, 8
-      optional :hops_away, :uint32, 9
+      proto3_optional :hops_away, :uint32, 9
       optional :is_favorite, :bool, 10
+      optional :is_ignored, :bool, 11
     end
     add_message "meshtastic.MyNodeInfo" do
       optional :my_node_num, :uint32, 1
       optional :reboot_count, :uint32, 8
       optional :min_app_version, :uint32, 11
+      optional :device_id, :bytes, 12
+      optional :pio_env, :string, 13
     end
     add_message "meshtastic.LogRecord" do
       optional :message, :string, 1
@@ -198,7 +219,20 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
         optional :xmodemPacket, :message, 12, "meshtastic.XModem"
         optional :metadata, :message, 13, "meshtastic.DeviceMetadata"
         optional :mqttClientProxyMessage, :message, 14, "meshtastic.MqttClientProxyMessage"
+        optional :fileInfo, :message, 15, "meshtastic.FileInfo"
+        optional :clientNotification, :message, 16, "meshtastic.ClientNotification"
+        optional :deviceuiConfig, :message, 17, "meshtastic.DeviceUIConfig"
       end
+    end
+    add_message "meshtastic.ClientNotification" do
+      proto3_optional :reply_id, :uint32, 1
+      optional :time, :fixed32, 2
+      optional :level, :enum, 3, "meshtastic.LogRecord.Level"
+      optional :message, :string, 4
+    end
+    add_message "meshtastic.FileInfo" do
+      optional :file_name, :string, 1
+      optional :size_bytes, :uint32, 2
     end
     add_message "meshtastic.ToRadio" do
       oneof :payload_variant do
@@ -237,12 +271,31 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :position_flags, :uint32, 8
       optional :hw_model, :enum, 9, "meshtastic.HardwareModel"
       optional :hasRemoteHardware, :bool, 10
+      optional :hasPKC, :bool, 11
+      optional :excluded_modules, :uint32, 12
     end
     add_message "meshtastic.Heartbeat" do
     end
     add_message "meshtastic.NodeRemoteHardwarePin" do
       optional :node_num, :uint32, 1
       optional :pin, :message, 2, "meshtastic.RemoteHardwarePin"
+    end
+    add_message "meshtastic.ChunkedPayload" do
+      optional :payload_id, :uint32, 1
+      optional :chunk_count, :uint32, 2
+      optional :chunk_index, :uint32, 3
+      optional :payload_chunk, :bytes, 4
+    end
+    add_message "meshtastic.resend_chunks" do
+      repeated :chunks, :uint32, 1
+    end
+    add_message "meshtastic.ChunkedPayloadResponse" do
+      optional :payload_id, :uint32, 1
+      oneof :payload_variant do
+        optional :request_transfer, :bool, 2
+        optional :accept_transfer, :bool, 3
+        optional :resend_chunks, :message, 4, "meshtastic.resend_chunks"
+      end
     end
     add_enum "meshtastic.HardwareModel" do
       value :UNSET, 0
@@ -265,6 +318,11 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :NANO_G1_EXPLORER, 17
       value :NANO_G2_ULTRA, 18
       value :LORA_TYPE, 19
+      value :WIPHONE, 20
+      value :WIO_WM1110, 21
+      value :RAK2560, 22
+      value :HELTEC_HRU_3601, 23
+      value :HELTEC_WIRELESS_BRIDGE, 24
       value :STATION_G1, 25
       value :RAK11310, 26
       value :SENSELORA_RP2040, 27
@@ -303,11 +361,35 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :TD_LORAC, 60
       value :CDEBYTE_EORA_S3, 61
       value :TWC_MESH_V4, 62
+      value :NRF52_PROMICRO_DIY, 63
+      value :RADIOMASTER_900_BANDIT_NANO, 64
+      value :HELTEC_CAPSULE_SENSOR_V3, 65
+      value :HELTEC_VISION_MASTER_T190, 66
+      value :HELTEC_VISION_MASTER_E213, 67
+      value :HELTEC_VISION_MASTER_E290, 68
+      value :HELTEC_MESH_NODE_T114, 69
+      value :SENSECAP_INDICATOR, 70
+      value :TRACKER_T1000_E, 71
+      value :RAK3172, 72
+      value :WIO_E5, 73
+      value :RADIOMASTER_900_BANDIT, 74
+      value :ME25LS01_4Y10TD, 75
+      value :RP2040_FEATHER_RFM95, 76
+      value :M5STACK_COREBASIC, 77
+      value :M5STACK_CORE2, 78
+      value :RPI_PICO2, 79
+      value :M5STACK_CORES3, 80
+      value :SEEED_XIAO_S3, 81
+      value :MS24SF1, 82
+      value :TLORA_C6, 83
+      value :WISMESH_TAP, 84
+      value :ROUTASTIC, 85
+      value :MESH_TAB, 86
       value :PRIVATE_HW, 255
     end
     add_enum "meshtastic.Constants" do
       value :ZERO, 0
-      value :DATA_PAYLOAD_LEN, 237
+      value :DATA_PAYLOAD_LEN, 233
     end
     add_enum "meshtastic.CriticalErrorCode" do
       value :NONE, 0
@@ -322,6 +404,24 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :BROWNOUT, 9
       value :SX1262_FAILURE, 10
       value :RADIO_SPI_BUG, 11
+      value :FLASH_CORRUPTION_RECOVERABLE, 12
+      value :FLASH_CORRUPTION_UNRECOVERABLE, 13
+    end
+    add_enum "meshtastic.ExcludedModules" do
+      value :EXCLUDED_NONE, 0
+      value :MQTT_CONFIG, 1
+      value :SERIAL_CONFIG, 2
+      value :EXTNOTIF_CONFIG, 4
+      value :STOREFORWARD_CONFIG, 8
+      value :RANGETEST_CONFIG, 16
+      value :TELEMETRY_CONFIG, 32
+      value :CANNEDMSG_CONFIG, 64
+      value :AUDIO_CONFIG, 128
+      value :REMOTEHARDWARE_CONFIG, 256
+      value :NEIGHBORINFO_CONFIG, 512
+      value :AMBIENTLIGHTING_CONFIG, 1024
+      value :DETECTIONSENSOR_CONFIG, 2048
+      value :PAXCOUNTER_CONFIG, 4096
     end
   end
 end
@@ -346,6 +446,8 @@ module Meshtastic
   LogRecord::Level = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.LogRecord.Level").enummodule
   QueueStatus = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.QueueStatus").msgclass
   FromRadio = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.FromRadio").msgclass
+  ClientNotification = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ClientNotification").msgclass
+  FileInfo = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.FileInfo").msgclass
   ToRadio = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ToRadio").msgclass
   Compressed = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Compressed").msgclass
   NeighborInfo = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.NeighborInfo").msgclass
@@ -353,7 +455,11 @@ module Meshtastic
   DeviceMetadata = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.DeviceMetadata").msgclass
   Heartbeat = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Heartbeat").msgclass
   NodeRemoteHardwarePin = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.NodeRemoteHardwarePin").msgclass
+  ChunkedPayload = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ChunkedPayload").msgclass
+  Resend_chunks = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.resend_chunks").msgclass
+  ChunkedPayloadResponse = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ChunkedPayloadResponse").msgclass
   HardwareModel = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.HardwareModel").enummodule
   Constants = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Constants").enummodule
   CriticalErrorCode = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.CriticalErrorCode").enummodule
+  ExcludedModules = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ExcludedModules").enummodule
 end
