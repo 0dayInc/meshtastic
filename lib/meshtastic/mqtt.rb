@@ -19,7 +19,8 @@ module Meshtastic
     #   host: 'optional - mqtt host (default: mqtt.meshtastic.org)',
     #   port: 'optional - mqtt port (defaults: 1883)',
     #   username: 'optional - mqtt username (default: meshdev)',
-    #   password: 'optional - (default: large4cats)'
+    #   password: 'optional - (default: large4cats)',
+    #   client_id: 'optional - client ID (default: random 8-byte hex string)'
     # )
 
     public_class_method def self.connect(opts = {})
@@ -28,17 +29,15 @@ module Meshtastic
       port = opts[:port] ||= 1883
       username = opts[:username] ||= 'meshdev'
       password = opts[:password] ||= 'large4cats'
+      client_id = opts[:client_id] ||= SecureRandom.random_bytes(8).unpack1('H*')
 
-      mqtt_obj = MQTTClient.connect(
+      MQTTClient.connect(
         host: host,
         port: port,
         username: username,
-        password: password
+        password: password,
+        client_id: client_id
       )
-
-      mqtt_obj.client_id = SecureRandom.random_bytes(8).unpack1('H*')
-
-      mqtt_obj
     rescue StandardError => e
       raise e
     end
@@ -416,7 +415,8 @@ module Meshtastic
           host: 'optional - mqtt host (default: mqtt.meshtastic.org)',
           port: 'optional - mqtt port (defaults: 1883)',
           username: 'optional - mqtt username (default: meshdev)',
-          password: 'optional - (default: large4cats)'
+          password: 'optional - (default: large4cats)',
+          client_id: 'optional - client ID (default: random 8-byte hex string)'
         )
 
         #{self}.subscribe(
