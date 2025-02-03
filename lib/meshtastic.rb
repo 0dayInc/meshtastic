@@ -51,8 +51,8 @@ module Meshtastic
 
   # Supported Method Parameters::
   # Meshtastic.send_text(
-  #   from: 'required - From ID (String or Integer)',
-  #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
+  #   from: 'required - From ID (String or Integer) (Default: "!00000b0b")',
+  #   to: 'optional - Destination ID (Default: "!ffffffff")',
   #   last_packet_id: 'optional - Last Packet ID (Default: 0)',
   #   via: 'optional - :radio || :mqtt (Default: :radio)',
   #   channel: 'optional - Channel (Default: 6)',
@@ -65,13 +65,13 @@ module Meshtastic
   # )
   public_class_method def self.send_text(opts = {})
     # Send a text message to a node
-    from = opts[:from]
+    from = opts[:from] ||= '!00000b0b'
     # from_hex = from.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if from.is_a?(String)
     from_hex = from.delete('!') if from.is_a?(String)
     from = from_hex.to_i(16) if from_hex
     raise 'ERROR: from parameter is required.' unless from
 
-    to = opts[:to] ||= 0xFFFFFFFF
+    to = opts[:to] ||= '!ffffffff'
     # to_hex = to.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if to.is_a?(String)
     to_hex = to.delete('!') if to.is_a?(String)
     to = to_hex.to_i(16) if to_hex
@@ -123,8 +123,8 @@ module Meshtastic
 
   # Supported Method Parameters::
   # Meshtastic.send_data(
-  #   from: 'required - From ID (String or Integer)',
-  #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
+  #   from: 'required - From ID (String or Integer) (Default: "!00000b0b")',
+  #   to: 'optional - Destination ID (Default: "!ffffffff")',
   #   last_packet_id: 'optional - Last Packet ID (Default: 0)',
   #   via: 'optional - :radio || :mqtt (Default: :radio)',
   #   channel: 'optional - Channel (Default: 0)',
@@ -136,13 +136,13 @@ module Meshtastic
   # )
   public_class_method def self.send_data(opts = {})
     # Send a text message to a node
-    from = opts[:from]
+    from = opts[:from] ||= '!00000b0b'
     # from_hex = from.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if from.is_a?(String)
     from_hex = from.delete('!') if from.is_a?(String)
     from = from_hex.to_i(16) if from_hex
     raise 'ERROR: from parameter is required.' unless from
 
-    to = opts[:to] ||= 0xFFFFFFFF
+    to = opts[:to] ||= '!ffffffff'
     # to_hex = to.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if to.is_a?(String)
     to_hex = to.delete('!') if to.is_a?(String)
     to = to_hex.to_i(16) if to_hex
@@ -188,8 +188,8 @@ module Meshtastic
   # Supported Method Parameters::
   # Meshtastic.send_packet(
   #   mesh_packet: 'required - Mesh Packet to Send',
-  #   from: 'required - From ID (String or Integer)',
-  #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
+  #   from: 'required - From ID (String or Integer) (Default: "!00000b0b")',
+  #   to: 'optional - Destination ID (Default: "!ffffffff")',
   #   last_packet_id: 'optional - Last Packet ID (Default: 0)',
   #   via: 'optional - :radio || :mqtt (Default: :radio)',
   #   channel: 'optional - Channel (Default: 0)',
@@ -199,13 +199,13 @@ module Meshtastic
   # )
   public_class_method def self.send_packet(opts = {})
     mesh_packet = opts[:mesh_packet]
-    from = opts[:from]
+    from = opts[:from] ||= '!00000b0b'
     # from_hex = from.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if from.is_a?(String)
     from_hex = from.delete('!') if from.is_a?(String)
     from = from_hex.to_i(16) if from_hex
     raise 'ERROR: from parameter is required.' unless from
 
-    to = opts[:to] ||= 0xFFFFFFFF
+    to = opts[:to] ||= '!ffffffff'
     # to_hex = to.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if to.is_a?(String)
     to_hex = to.delete('!') if to.is_a?(String)
     to = to_hex.to_i(16) if to_hex
@@ -340,7 +340,7 @@ module Meshtastic
   # Supported Method Parameters::
   # Meshtastic.gps_search(
   #   lat: 'required - latitude float (e.g. 37.7749)',
-  #   lon: 'required - longitude float (e.g. -122.4194)',
+  #   lon: 'required - longitude float (e.g. -122.4194)'
   # )
   public_class_method def self.gps_search(opts = {})
     lat = opts[:lat]
@@ -477,13 +477,74 @@ module Meshtastic
   # Display a List of Every Meshtastic Module
 
   public_class_method def self.help
-    constants.sort
+    puts "USAGE:
+      #{self}.send_text(
+        from: 'required - From ID (String or Integer) (Default: \"!00000b0b\")',
+        to: 'optional - Destination ID (Default: \"!ffffffff\")',
+        last_packet_id: 'optional - Last Packet ID (Default: 0)',
+        via: 'optional - :radio || :mqtt (Default: :radio)',
+        channel: 'optional - Channel (Default: 6)',
+        text: 'optional - Text Message (Default: SYN)',
+        want_ack: 'optional - Want Acknowledgement (Default: false)',
+        want_response: 'optional - Want Response (Default: false)',
+        hop_limit: 'optional - Hop Limit (Default: 3)',
+        on_response: 'optional - Callback on Response',
+        psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: \"AQ==\" })'
+      )
 
-    # puts "USAGE:
-    #   #{self}.gps_search(
-    #     lat: 'required - latitude float (e.g. 37.7749)',
-    #     lon: 'required - longitude float (e.g. -122.4194)',
-    #   )
-    # "
+      #{self}.send_data(
+        from: 'required - From ID (String or Integer) (Default: \"!00000b0b\")',
+        to: 'optional - Destination ID (Default: \"!ffffffff\")',
+        last_packet_id: 'optional - Last Packet ID (Default: 0)',
+        via: 'optional - :radio || :mqtt (Default: :radio)',
+        channel: 'optional - Channel (Default: 0)',
+        data: 'required - Data to Send',
+        want_ack: 'optional - Want Acknowledgement (Default: false)',
+        hop_limit: 'optional - Hop Limit (Default: 3)',
+        port_num: 'optional - (Default: Meshtastic::PortNum::PRIVATE_APP)',
+        psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: \"AQ==\" })'
+      )
+
+      #{self}.send_packet(
+        mesh_packet: 'required - Mesh Packet to Send',
+        from: 'required - From ID (String or Integer) (Default: \"!00000b0b\")',
+        to: 'optional - Destination ID (Default: \"!ffffffff\")',
+        last_packet_id: 'optional - Last Packet ID (Default: 0)',
+        via: 'optional - :radio || :mqtt (Default: :radio)',
+        channel: 'optional - Channel (Default: 0)',
+        want_ack: 'optional - Want Acknowledgement (Default: false)',
+        hop_limit: 'optional - Hop Limit (Default: 3)',
+        psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: \"AQ==\" })'
+      )
+
+      #{self}.generate_packet_id(
+        last_packet_id: 'optional - Last Packet ID (Default: 0)'
+      )
+
+      #{self}.get_cipher_keys(
+        psks: 'required - hash of channel / pre-shared key value pairs'
+      )
+
+      #{self}.send_to_radio(
+        to_radio: 'required - ToRadio Message to Send'
+      )
+
+      #{self}.send_to_mqtt(
+        service_envelope: 'required - ServiceEnvelope Message to Send'
+      )
+
+      #{self}.gps_search(
+        lat: 'required - latitude float (e.g. 37.7749)',
+        lon: 'required - longitude float (e.g. -122.4194)'
+      )
+
+      #{self}.decode_payload(
+        payload: 'required - payload to recursively decode',
+        msg_type: 'required - message type (e.g. :TEXT_MESSAGE_APP)',
+        gps_metadata: 'optional - include GPS metadata in output (default: false)',
+      )
+
+      #{self}.authors
+    "
   end
 end
