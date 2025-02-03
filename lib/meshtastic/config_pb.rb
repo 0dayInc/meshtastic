@@ -137,6 +137,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :heading_bold, :bool, 9
       optional :wake_on_tap_or_motion, :bool, 10
       optional :compass_orientation, :enum, 11, "meshtastic.Config.DisplayConfig.CompassOrientation"
+      optional :use_12h_clock, :bool, 12
     end
     add_enum "meshtastic.Config.DisplayConfig.GpsCoordinateFormat" do
       value :DEC, 0
