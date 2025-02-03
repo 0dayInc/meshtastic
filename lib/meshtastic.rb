@@ -55,7 +55,7 @@ module Meshtastic
   #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
   #   last_packet_id: 'optional - Last Packet ID (Default: 0)',
   #   via: 'optional - :radio || :mqtt (Default: :radio)',
-  #   channel: 'optional - Channel ID (Default: 6)',
+  #   channel: 'optional - Channel (Default: 6)',
   #   text: 'optional - Text Message (Default: SYN)',
   #   want_ack: 'optional - Want Acknowledgement (Default: false)',
   #   want_response: 'optional - Want Response (Default: false)',
@@ -127,7 +127,7 @@ module Meshtastic
   #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
   #   last_packet_id: 'optional - Last Packet ID (Default: 0)',
   #   via: 'optional - :radio || :mqtt (Default: :radio)',
-  #   channel: 'optional - Channel ID (Default: 0)',
+  #   channel: 'optional - Channel (Default: 0)',
   #   data: 'required - Data to Send',
   #   want_ack: 'optional - Want Acknowledgement (Default: false)',
   #   hop_limit: 'optional - Hop Limit (Default: 3)',
@@ -192,7 +192,7 @@ module Meshtastic
   #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
   #   last_packet_id: 'optional - Last Packet ID (Default: 0)',
   #   via: 'optional - :radio || :mqtt (Default: :radio)',
-  #   channel: 'optional - Channel ID (Default: 0)',
+  #   channel: 'optional - Channel (Default: 0)',
   #   want_ack: 'optional - Want Acknowledgement (Default: false)',
   #   hop_limit: 'optional - Hop Limit (Default: 3)',
   #   psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: "AQ==" })'
@@ -264,6 +264,7 @@ module Meshtastic
     when :mqtt
       service_envelope = Meshtastic::ServiceEnvelope.new
       service_envelope.packet = mesh_packet
+      # TODO: Add support for multiple PSKs by accepting channel_id
       service_envelope.channel_id = psks.keys.first
       service_envelope.gateway_id = "!#{from.to_s(16).downcase}"
       send_to_mqtt(service_envelope: service_envelope)
