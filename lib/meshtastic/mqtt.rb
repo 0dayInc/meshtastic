@@ -30,6 +30,7 @@ module Meshtastic
       username = opts[:username] ||= 'meshdev'
       password = opts[:password] ||= 'large4cats'
       client_id = opts[:client_id] ||= SecureRandom.random_bytes(4).unpack1('H*').to_s
+      client_id = format("0.8x", client_id) if client_id.is_a?(Integer)
       client_id = client_id.delete('!') if client_id.include?('!')
 
       MQTTClient.connect(
