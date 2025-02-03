@@ -58,8 +58,8 @@ require 'meshtastic'
 mqtt_obj = Meshastic::MQTT.connect
 Meshtastic::MQTT.send_text(
   mqtt_obj: mqtt_obj,
-  from: '!00fa1f',
-  topic: 'msh/US/2/e/LongFast/!00fa1f',
+  from: '!0fa17b',
+  topic: 'msh/US/2/e/LongFast/!0fa17b',
   text: 'Hello, World!',
   psks: { LongFast: 'AQ==' }
 )
