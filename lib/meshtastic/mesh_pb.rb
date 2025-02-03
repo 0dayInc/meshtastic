@@ -385,6 +385,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :WISMESH_TAP, 84
       value :ROUTASTIC, 85
       value :MESH_TAB, 86
+      value :MESHLINK, 87
       value :PRIVATE_HW, 255
     end
     add_enum "meshtastic.Constants" do

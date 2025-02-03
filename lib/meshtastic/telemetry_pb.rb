@@ -31,6 +31,8 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       proto3_optional :wind_gust, :float, 16
       proto3_optional :wind_lull, :float, 17
       proto3_optional :radiation, :float, 18
+      proto3_optional :rainfall_1h, :float, 19
+      proto3_optional :rainfall_24h, :float, 20
     end
     add_message "meshtastic.PowerMetrics" do
       proto3_optional :ch1_voltage, :float, 1
@@ -124,6 +126,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :SCD4X, 32
       value :RADSENS, 33
       value :INA226, 34
+      value :DFROBOT_RAIN, 35
     end
   end
 end
