@@ -269,7 +269,7 @@ module Meshtastic
           port: 'optional - mqtt port (defaults: 1883)',
           username: 'optional - mqtt username (default: meshdev)',
           password: 'optional - (default: large4cats)',
-          client_id: 'optional - client ID (default: random 8-byte hex string)'
+          client_id: 'optional - client ID (default: random 4-byte hex string)'
         )
 
         #{self}.subscribe(
