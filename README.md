@@ -56,13 +56,32 @@ Sending a message over MQTT:
 ```ruby
 require 'meshtastic'
 mqtt_obj = Meshastic::MQTT.connect
+client_id = "!#{mqtt_obj.client_id}"
 Meshtastic::MQTT.send_text(
   mqtt_obj: mqtt_obj,
-  from: '!0fa17b',
-  topic: 'msh/US/2/e/LongFast/!0fa17b',
+  from: client_id,
+  to: '!ffffffff',
+  topic: "msh/US/2/e/LongFast/#{client_id}",
+  channel: 93,
   text: 'Hello, World!',
   psks: { LongFast: 'AQ==' }
 )
+```
+
+One of the "gotchas" when sending messages is ensuring you're sending over the proper channel.  The best way to determine which channel you should use is by sending a test message from within the meshtastic app and then viewing the MQTT message similar to the following:
+
+```ruby
+require 'meshtastic'
+mqtt_obj = Meshastic::MQTT.connect
+Meshtastic::MQTT.subscribe(
+  mqtt_obj: mqtt_obj,
+  region: 'US',
+  channel: '2/e/LongFast/#',
+  psks: { LongFast: 'AQ==' },
+  filter: '!YOUR_CLIENT_ID'
+) do |message|
+  puts message.inspect
+end
 ```
 
 ## Contributing
