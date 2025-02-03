@@ -46,6 +46,20 @@ Meshtastic::MQTT.subscribe(mqtt_obj: mqtt_obj) do |message|
 end
 ```
 
+Sending a message over MQTT:
+
+```ruby
+require 'meshtastic'
+mqtt_obj = Meshastic::MQTT.connect
+Meshtastic::MQTT.send_text(
+  mqtt_obj: mqtt_obj,
+  from: '!00fa1f',
+  topic: 'msh/US/2/e/LongFast/!00fa1f',
+  text: 'Hello, World!',
+  psks: { LongFast: 'AQ==' }
+)
+```
+
 ## Contributing
 
 Bug reports and pull requests are welcome on GitHub at https://github.com/0dayinc/meshtastic. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [code of conduct](https://github.com/0dayinc/meshtastic/blob/master/CODE_OF_CONDUCT.md).
