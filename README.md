@@ -41,7 +41,12 @@ This code will dump the contents of every message:
 ```ruby
 require 'meshtastic'
 mqtt_obj = Meshastic::MQTT.connect
-Meshtastic::MQTT.subscribe(mqtt_obj: mqtt_obj) do |message|
+Meshtastic::MQTT.subscribe(
+  mqtt_obj: mqtt_obj,
+  region: 'US',
+  channel: '2/e/LongFast/#',
+  psks: { LongFast: 'AQ==' }
+) do |message|
   puts message.inspect
 end
 ```
