@@ -66,12 +66,14 @@ module Meshtastic
   public_class_method def self.send_text(opts = {})
     # Send a text message to a node
     from = opts[:from]
-    from_hex = from.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if from.is_a?(String)
+    # from_hex = from.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if from.is_a?(String)
+    from_hex = from.delete('!') if from.is_a?(String)
     from = from_hex.to_i(16) if from_hex
     raise 'ERROR: from parameter is required.' unless from
 
     to = opts[:to] ||= 0xFFFFFFFF
-    to_hex = to.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if to.is_a?(String)
+    # to_hex = to.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if to.is_a?(String)
+    to_hex = to.delete('!') if to.is_a?(String)
     to = to_hex.to_i(16) if to_hex
 
     last_packet_id = opts[:last_packet_id] ||= 0
