@@ -48,8 +48,8 @@ module Meshtastic
     #   mqtt_obj: 'required - mqtt_obj returned from #connect method'
     #   root_topic: 'optional - root topic (default: msh)',
     #   region: 'optional - region e.g. 'US/VA', etc (default: US)',
-    #   channel: 'optional - channel name e.g. "2/stat/#" (default: "2/e/LongFast/#")',
-    #   psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: "AQ==" })',
+    #   channel_id_path: 'optional - channel ID path e.g. "2/stat/#" (default: "2/e/LongFast/#")',
+    #   psks: 'optional - hash of :channel_id => psk key value pairs (default: { LongFast: "AQ==" })',
     #   qos: 'optional - quality of service (default: 0)',
     #   filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
     #   gps_metadata: 'optional - include GPS metadata in output (default: false)',
@@ -60,12 +60,12 @@ module Meshtastic
       mqtt_obj = opts[:mqtt_obj]
       root_topic = opts[:root_topic] ||= 'msh'
       region = opts[:region] ||= 'US'
-      channel = opts[:channel] ||= '2/e/LongFast/#'
+      channel_id_path = opts[:channel_id_path] ||= '2/e/LongFast/#'
       # TODO: Support Array of PSKs and attempt each until decrypted
 
       public_psk = '1PG7OiApB1nwvP+rz05pAQ=='
       psks = opts[:psks] ||= { LongFast: public_psk }
-      raise 'ERROR: psks parameter must be a hash of :channel => psk key value pairs' unless psks.is_a?(Hash)
+      raise 'ERROR: psks parameter must be a hash of :channel_id => psk key value pairs' unless psks.is_a?(Hash)
 
       psks[:LongFast] = public_psk if psks[:LongFast] == 'AQ=='
       psks = Meshtastic.get_cipher_keys(psks: psks)
@@ -77,7 +77,7 @@ module Meshtastic
       include_raw = opts[:include_raw] ||= false
 
       # NOTE: Use MQTT Explorer for topic discovery
-      full_topic = "#{root_topic}/#{region}/#{channel}"
+      full_topic = "#{root_topic}/#{region}/#{channel_id_path}"
       full_topic = "#{root_topic}/#{region}" if region == '#'
       puts "Subscribing to: #{full_topic}"
       mqtt_obj.subscribe(full_topic, qos)
@@ -218,13 +218,13 @@ module Meshtastic
     #   from: ' required - From ID (String or Integer)',
     #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
     #   topic: 'optional - topic to publish to (default: "msh/US/2/e/LongFast/1")',
-    #   channel: 'optional - channel ID (Default: 6)',
+    #   channel: 'optional - channel (Default: 6)',
     #   text: 'optional - Text Message (Default: SYN)',
     #   want_ack: 'optional - Want Acknowledgement (Default: false)',
     #   want_response: 'optional - Want Response (Default: false)',
     #   hop_limit: 'optional - Hop Limit (Default: 3)',
     #   on_response: 'optional - Callback on Response',
-    #   psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: "AQ==" })'
+    #   psks: 'optional - hash of :channel_id => psk key value pairs (default: { LongFast: "AQ==" })'
     # )
     public_class_method def self.send_text(opts = {})
       mqtt_obj = opts[:mqtt_obj]
@@ -276,8 +276,8 @@ module Meshtastic
           mqtt_obj: 'required - mqtt_obj object returned from #connect method',
           root_topic: 'optional - root topic (default: msh)',
           region: 'optional - region e.g. 'US/VA', etc (default: US)',
-          channel: 'optional - channel name e.g. '2/stat/#' (default: '2/e/LongFast/#')',
-          psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: 'AQ==' })',
+          channel_id_path: 'optional - channel ID path e.g. '2/stat/#' (default: '2/e/LongFast/#')',
+          psks: 'optional - hash of :channel_id => psk key value pairs (default: { LongFast: 'AQ==' })',
           qos: 'optional - quality of service (default: 0)',
           json: 'optional - JSON output (default: false)',
           filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
@@ -289,7 +289,7 @@ module Meshtastic
           from: ' required - From ID (String or Integer)',
           to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
           topic: 'optional - topic to publish to (default: 'msh/US/2/e/LongFast/1')',
-          channel: 'optional - channel ID (Default: 6)',
+          channel: 'optional - channel (Default: 6)',
           text: 'optional - Text Message (Default: SYN)',
           want_ack: 'optional - Want Acknowledgement (Default: false)',
           want_response: 'optional - Want Response (Default: false)',
