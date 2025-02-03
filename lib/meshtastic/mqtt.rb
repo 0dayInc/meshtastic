@@ -20,7 +20,7 @@ module Meshtastic
     #   port: 'optional - mqtt port (defaults: 1883)',
     #   username: 'optional - mqtt username (default: meshdev)',
     #   password: 'optional - (default: large4cats)',
-    #   client_id: 'optional - client ID (default: random 8-byte hex string)'
+    #   client_id: 'optional - client ID (default: random 4-byte hex string)'
     # )
 
     public_class_method def self.connect(opts = {})
@@ -29,7 +29,7 @@ module Meshtastic
       port = opts[:port] ||= 1883
       username = opts[:username] ||= 'meshdev'
       password = opts[:password] ||= 'large4cats'
-      client_id = opts[:client_id] ||= SecureRandom.random_bytes(8).unpack1('H*')
+      client_id = opts[:client_id] ||= SecureRandom.random_bytes(4).unpack1('H*').to_s
 
       MQTTClient.connect(
         host: host,
@@ -38,137 +38,6 @@ module Meshtastic
         password: password,
         client_id: client_id
       )
-    rescue StandardError => e
-      raise e
-    end
-
-    # Supported Method Parameters::
-    # Meshtastic::MQQT.get_cipher_keys(
-    #  psks: 'required - hash of channel / pre-shared key value pairs'
-    #  )
-
-    private_class_method def self.get_cipher_keys(opts = {})
-      psks = opts[:psks]
-
-      psks.each_key do |key|
-        psk = psks[key]
-        padded_psk = psk.ljust(psk.length + ((4 - (psk.length % 4)) % 4), '=')
-        replaced_psk = padded_psk.gsub('-', '+').gsub('_', '/')
-        psks[key] = replaced_psk
-      end
-
-      psks
-    rescue StandardError => e
-      raise e
-    end
-
-    # Supported Method Parameters::
-    # Meshtastic::MQQT.decode_payload(
-    #   payload: 'required - payload to recursively decode',
-    #   msg_type: 'required - message type (e.g. :TEXT_MESSAGE_APP)',
-    #   gps_metadata: 'optional - include GPS metadata in output (default: false)',
-    # )
-
-    public_class_method def self.decode_payload(opts = {})
-      payload = opts[:payload]
-      msg_type = opts[:msg_type]
-      gps_metadata = opts[:gps_metadata]
-
-      case msg_type
-      when :ADMIN_APP
-        decoder = Meshtastic::AdminMessage
-      when :ATAK_FORWARDER, :ATAK_PLUGIN
-        decoder = Meshtastic::TAKPacket
-        # when :AUDIO_APP
-        # decoder = Meshtastic::Audio
-      when :DETECTION_SENSOR_APP
-        decoder = Meshtastic::DeviceState
-        # when :IP_TUNNEL_APP
-        # decoder = Meshtastic::IpTunnel
-      when :MAP_REPORT_APP
-        decoder = Meshtastic::MapReport
-        # when :MAX
-        # decoder = Meshtastic::Max
-      when :NEIGHBORINFO_APP
-        decoder = Meshtastic::NeighborInfo
-      when :NODEINFO_APP
-        decoder = Meshtastic::User
-      when :PAXCOUNTER_APP
-        decoder = Meshtastic::Paxcount
-      when :POSITION_APP
-        decoder = Meshtastic::Position
-        # when :PRIVATE_APP
-        # decoder = Meshtastic::Private
-      when :RANGE_TEST_APP
-        # Unsure if this is the correct protobuf object
-        decoder = Meshtastic::FromRadio
-      when :REMOTE_HARDWARE_APP
-        decoder = Meshtastic::HardwareMessage
-        # when :REPLY_APP
-        # decoder = Meshtastic::Reply
-      when :ROUTING_APP
-        decoder = Meshtastic::Routing
-      when :SERIAL_APP
-        decoder = Meshtastic::SerialConnectionStatus
-      when :SIMULATOR_APP
-        decoder = Meshtastic::Compressed
-      when :STORE_FORWARD_APP
-        decoder = Meshtastic::StoreAndForward
-      when :TEXT_MESSAGE_APP, :UNKNOWN_APP
-        decoder = Meshtastic::Data
-      when :TELEMETRY_APP
-        decoder = Meshtastic::Telemetry
-      when :TRACEROUTE_APP
-        decoder = Meshtastic::RouteDiscovery
-      when :WAYPOINT_APP
-        decoder = Meshtastic::Waypoint
-        # when :ZPS_APP
-        # decoder = Meshtastic::Zps
-      else
-        puts "WARNING: Can't decode\n#{payload.inspect}\nw/ portnum: #{msg_type}"
-        return payload
-      end
-
-      payload = decoder.decode(payload).to_h
-
-      if payload.keys.include?(:latitude_i)
-        lat = payload[:latitude_i] * 0.0000001
-        payload[:latitude] = lat
-      end
-
-      if payload.keys.include?(:longitude_i)
-        lon = payload[:longitude_i] * 0.0000001
-        payload[:longitude] = lon
-      end
-
-      if payload.keys.include?(:macaddr)
-        mac_raw = payload[:macaddr]
-        mac_hex_arr = mac_raw.bytes.map { |byte| byte.to_s(16).rjust(2, '0') }
-        mac_hex_str = mac_hex_arr.join(':')
-        payload[:macaddr] = mac_hex_str
-      end
-
-      if payload.keys.include?(:time)
-        time_int = payload[:time]
-        if time_int.is_a?(Integer)
-          time_utc = Time.at(time_int).utc.to_s
-          payload[:time_utc] = time_utc
-        end
-      end
-
-      if gps_metadata && payload[:latitude] && payload[:longitude]
-        lat = payload[:latitude]
-        lon = payload[:longitude]
-        unless lat.zero? && lon.zero?
-          gps_search_resp = gps_search(lat: lat, lon: lon)
-          payload[:gps_metadata] = gps_search_resp
-        end
-      end
-
-      payload
-    rescue Encoding::CompatibilityError,
-           Google::Protobuf::ParseError
-      payload
     rescue StandardError => e
       raise e
     end
@@ -198,7 +67,7 @@ module Meshtastic
       raise 'ERROR: psks parameter must be a hash of :channel => psk key value pairs' unless psks.is_a?(Hash)
 
       psks[:LongFast] = public_psk if psks[:LongFast] == 'AQ=='
-      psks = get_cipher_keys(psks: psks)
+      psks = Meshtastic.get_cipher_keys(psks: psks)
 
       qos = opts[:qos] ||= 0
       json = opts[:json] ||= false
@@ -278,7 +147,7 @@ module Meshtastic
             # payload = Meshtastic::Data.decode(message[:decoded][:payload]).to_h
             payload = message[:decoded][:payload]
             msg_type = message[:decoded][:portnum]
-            message[:decoded][:payload] = decode_payload(
+            message[:decoded][:payload] = Meshtastic.decode_payload(
               payload: payload,
               msg_type: msg_type,
               gps_metadata: gps_metadata
@@ -361,27 +230,10 @@ module Meshtastic
       topic = opts[:topic] ||= 'msh/US/2/e/LongFast/#'
       opts[:via] = :mqtt
 
+      # TODO: Implement chunked message to deal with large messages
       protobuf_text = Meshtastic.send_text(opts)
 
       mqtt_obj.publish(topic, protobuf_text)
-    rescue StandardError => e
-      raise e
-    end
-
-    # Supported Method Parameters::
-    # mqtt_obj = Meshtastic.gps_search(
-    #   lat: 'required - latitude float (e.g. 37.7749)',
-    #   lon: 'required - longitude float (e.g. -122.4194)',
-    # )
-    public_class_method def self.gps_search(opts = {})
-      lat = opts[:lat]
-      lon = opts[:lon]
-
-      raise 'ERROR: Latitude and Longitude are required' unless lat && lon
-
-      gps_arr = [lat.to_f, lon.to_f]
-
-      Geocoder.search(gps_arr).first.data
     rescue StandardError => e
       raise e
     end
@@ -429,11 +281,6 @@ module Meshtastic
           json: 'optional - JSON output (default: false)',
           filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
           gps_metadata: 'optional - include GPS metadata in output (default: false)'
-        )
-
-        #{self}.gps_search(
-          lat: 'required - latitude float (e.g. 37.7749)',
-          lon: 'required - longitude float (e.g. -122.4194)',
         )
 
         #{self}.send_text(
