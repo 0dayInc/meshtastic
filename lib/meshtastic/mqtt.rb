@@ -216,9 +216,9 @@ module Meshtastic
     # Supported Method Parameters::
     # Meshtastic.send_text(
     #   mqtt_obj: 'required - mqtt_obj returned from #connect method',
-    #   from: ' required - From ID (String or Integer)',
-    #   to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
-    #   topic: 'optional - topic to publish to (default: "msh/US/2/e/LongFast/1")',
+    #   from: 'required - From ID (String or Integer) (Default: "!00000b0b")',
+    #   to: 'optional - Destination ID (Default: "!ffffffff")',
+    #   topic: 'optional - topic to publish to (Default: "msh/US/2/e/LongFast/1")',
     #   channel: 'optional - channel (Default: 6)',
     #   text: 'optional - Text Message (Default: SYN)',
     #   want_ack: 'optional - Want Acknowledgement (Default: false)',
@@ -287,8 +287,8 @@ module Meshtastic
 
         #{self}.send_text(
           mqtt_obj: 'required - mqtt_obj returned from #connect method',
-          from: ' required - From ID (String or Integer)',
-          to: 'optional - Destination ID (Default: 0xFFFFFFFF)',
+          from: 'required - From ID (String or Integer) (Default: \"!00000b0b\")',
+          to: 'optional - Destination ID (Default: \"!ffffffff\")',
           topic: 'optional - topic to publish to (default: 'msh/US/2/e/LongFast/1')',
           channel: 'optional - channel (Default: 6)',
           text: 'optional - Text Message (Default: SYN)',
