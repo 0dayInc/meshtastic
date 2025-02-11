@@ -1,0 +1,196 @@
+ed4a5ab Meshtastic module - update #help method to be more useful
+1f2ae6c Meshtastic module - update #help method to be more useful
+e251a13 Meshtastic::MQTT module - minor #bugfix in format
+c1662df Meshtastic::MQTT module - minor tweaks
+c646e81 Merge pull request #82 from ninp0/master
+1e9c14a README.md - better examples && distinguish between channel, channel_id, and channel_topic
+be39a7d Merge pull request #81 from ninp0/master
+1209bb4 README.md - better examples && distinguish between channel, channel_id, and channel_id_path
+bed3e7b Merge pull request #80 from ninp0/master
+39326e1 README.md - better examples.
+d810969 Merge pull request #79 from ninp0/master
+2394749 protobufs - pull in latest
+ba62aaf README.md - better examples.
+285785f Merge pull request #78 from ninp0/master
+da242e2 README.md - better examples.
+b6645c5 Merge pull request #77 from ninp0/master
+dc9bfd3 Update docs
+20c2c97 Merge pull request #76 from ninp0/master
+225f4a0 Meshtastic::MQTT module - #bugfix in #connect method
+9076f4f Merge pull request #75 from ninp0/master
+825e88f Meshtastic module - #bugfix in #send_text method
+fb3067e Meshtastic module - #bugfix in #send_text method
+c65a4be Meshtastic::MQTT module - #bugfix in #connect method
+5ab6042 Merge pull request #74 from ninp0/master
+68967a1 Meshtastic::MQTT module - #bugfix in #connect method
+06082ee Merge pull request #73 from ninp0/master
+86dc0bd Gemfile updates
+3c5a7c6 Merge pull request #72 from ninp0/master
+3bf6ed6 pull in latest meshtastic protobuf and update Gemfile #add_specs
+94beb52 pull in latest meshtastic protobuf and update Gemfile
+6168a3f pull in latest meshtastic protobuf and update Gemfile
+476e946 Gemfile - bump ruby to 3.4.1
+fd559f5 Gemfile - bump ruby to 3.4.1
+f17640b Merge pull request #71 from ninp0/master
+61c7d6e Gemfile - bump versions to latest
+85a40a8 Merge pull request #70 from ninp0/master
+0f9fb8a upgrade_Gemfile_gems.sh - More flexible versioning for rubocop gems
+d88be1f Merge pull request #69 from ninp0/master
+e517ff1 upgrade_Gemfile_gems.sh - More flexible versioning for rubocop gems
+ff497cd Merge pull request #67 from ninp0/master
+b881a76 upgrade_Gemfile_gems.sh - More flexible versioning for rubocop gems
+18aebbf Merge pull request #66 from ninp0/master
+f21157c Gemfile - bump versions to latest
+749430d Merge pull request #65 from ninp0/master
+2a7d7ea Gemfile - bump versions to latest
+f12d78e Merge pull request #64 from ninp0/master
+0ab7fd1 Gemfile - bump versions to latest
+d0aee95 Merge pull request #63 from ninp0/master
+4b0390e Gemmfile bump version
+820b3ba Merge pull request #62 from ninp0/master
+908a6c0 .ruby-version - bump to 3.3.4
+c4ec72b Merge pull request #61 from ninp0/master
+82f41e6 Gemfile - bump versions to latest
+08fcd17 Merge pull request #60 from ninp0/master
+1d0117e Gemfile - bump versions to latest
+48fd16a Merge pull request #59 from ninp0/master
+0e18752 Gemfile - bump versions to latest
+e5aa123 Merge pull request #58 from ninp0/master
+5a24743 Gemfile - bump versions to latest
+51f4720 Merge pull request #57 from ninp0/master
+2af7c97 Gemfile - bump versions to latest
+cf14910 Merge pull request #56 from ninp0/master
+b0c854e Gemfile - update dependencies to align w/ pwn gem
+433f482 Merge pull request #55 from ninp0/master
+a6097f2 Meshtastic.send_text method - force ASCII-8BIT when packing a payload into Meshtastic::PortNum::TEXT_MESSAGE_APP protobuf
+fda26d6 Merge pull request #54 from ninp0/master
+0a0ac8e Meshtastic::MQQT module - encode raw_packet using UTF-8
+78c9102 Merge pull request #53 from ninp0/master
+8881b6f Meshtastic::MQQT module - encode raw_packet using UTF-8
+c4a757b Merge pull request #52 from ninp0/master
+b7747e8 Meshtastic.send_text method - encode text using UTF-8
+8885660 Merge pull request #51 from ninp0/master
+a2f852d Meshtastic::MQTT.send_text method - initial commit wrapping via: :mqtt into Meshtastic.send_text method for sending messages over mqtt
+378bb5e Merge pull request #50 from ninp0/master
+8c72c07 Meshtastic::MQTT module - rescue encoding incompatibilities
+4e7cd5a Merge pull request #49 from ninp0/master
+2ba8d25 Meshtastic module - improve message_packet.id generation
+a701ed1 Merge pull request #48 from ninp0/master
+ffad703 Meshtastic module - generate random packet id if the previous one is 0 #bugfix
+2947746 Merge pull request #47 from ninp0/master
+8c921db Meshtastic module - generate random packet id if the previous one is 0 #tweak
+332233b Merge pull request #46 from ninp0/master
+7c206db Meshtastic module - generate random packet id if the previous one is 0
+3586f13 Merge pull request #45 from ninp0/master
+18c3e7c Meshtastic module - wrap mesh_packet into instance of Meshtastic::ServiceEnvelope when sending "via: :mqtt"
+23917bb Meshtastic module - wrap mesh_packet into instance of Meshtastic::ServiceEnvelope
+10f393f Merge pull request #44 from ninp0/master
+0952291 Meshtastic module - remove stdout debugging
+1a4170b Merge pull request #43 from ninp0/master
+31519c2 Meshtastic::MQTT module - remove stdout debugging
+d1f543a Merge pull request #42 from ninp0/master
+0d91831 Meshtastic::MQTT && Meshtastic modules - support sending encrypted messages via TEXT_MESSAGE_APP / decrypting via Meshtastic::MQTT
+6490534 Merge pull request #41 from ninp0/master
+59ec4a2 Meshtastic::MQTT.subscribe method - translate rx_time integer to rx_time_utc timestamp #tweaks
+a6734ce Merge pull request #40 from ninp0/master
+d65a1d7 Meshtastic::MQTT.subscribe method - translate rx_time integer to rx_time_utc timestamp
+0092c80 Merge pull request #39 from ninp0/master
+3715d75 Meshtastic::MQTT.decode_payload method - handle portnum, "UNKNOWN_APP"
+81d8663 Merge pull request #38 from ninp0/master
+3bf61bc Meshtastic::MQTT.subscribe method - broader subscription region when region == #
+f0c4510 Merge pull request #37 from ninp0/master
+7a70550 Meshtastic::MQTT module - only work w/ valid packets
+4bcd522 Merge pull request #36 from ninp0/master
+dd7ce88 Meshtastic::MQTT module - overwrite payload[:macaddr] to avoid malformed utf-8 sequences when casting to JSON
+9f43f5f Merge pull request #35 from ninp0/master
+f18f9f0 Meshtastic::MQTT module - additional payload decoding and data massaging tweaks / reduce number of #gps_search calls to only valid lat lon values
+11263b9 Merge pull request #34 from ninp0/master
+7b3365b Meshtastic::MQTT module - a lot of payload decoding bugfixes.  Meshtastic module - begin implementing the ability to send packets (decoded and encrypted).
+9db5d74 Merge pull request #33 from ninp0/master
+480edd4 Meshtastic::MQQT - recursively decode nested payloads specific to port nums
+f007947 Merge pull request #32 from ninp0/master
+743869b Meshtastic::MQTT module - change psk parameter to psks which requires a hash of chanbnl psk key pair values
+2da71a9 Merge pull request #31 from ninp0/master
+2b3329b Meshtastic::MQTT module - try default psk for more channel #subscribe values
+612018f Merge pull request #30 from ninp0/master
+d449683 Meshtastic::MQTT module - rescue #bugfix
+9ab8c7a Merge pull request #29 from ninp0/master
+3f15a89 Meshtastic::MQTT module - #help tweak
+0d7b9fd Meshtastic::MQTT module - better channel support in #subscribe method
+5f7bf75 Merge pull request #28 from ninp0/master
+2f24bf2 Meshtastic::MQTT module - include all ServiceEnvelope hash response contents instead of just values for :packet key
+6c4f5db Merge pull request #27 from ninp0/master
+0b78b81 Meshtastic::MQTT module - move filter logic to the ensure block to enable filtering messages by stdout values "inspect" or "pretty"
+e39a0d9 Merge pull request #26 from ninp0/master
+4ab3587 Meshtastic::MQTT module - display mac address appropriately when e.g. NODEINFO_APP returns mixed ascii macaddr values
+08b38ef Merge pull request #25 from ninp0/master
+f5d5a6b Meshtastic::MQTT module - #rubocop
+03de0ad Meshtastic::MQTT module - implement working NODEINFO_APP, SIMULATOR_APP, and RANGE_TEST_APP decoders
+6485c97 Merge pull request #24 from ninp0/master
+e7bdd82 Meshtastic::MQTT module - implement a gps_metadata boolean parameter (default to false) for the #subscribe method to avoid rate limit issues
+5b665e7 Merge pull request #23 from ninp0/master
+41b1473 Merge branch 'master' of ssh://github.com/ninp0/meshtastic
+b6f6e68 Meshtastic::MQTT module - implement TRACEROUTE_APP decoding
+7896b1e Merge pull request #22 from ninp0/master
+b653692 Meshtastic::MQTT module - add gps_metadata for POSITION_APP via #gps_search method
+6536892 Merge pull request #21 from ninp0/master
+8dd7f06 ./git_commit.sh - include ./AUTOGEN_meshtastic_protobufs.sh to pull in latest protobuf definitions
+27effa9 Merge pull request #20 from ninp0/master
+292b6db Meshtastic::MQTT module - disable APPS where Protobuf#decode object is unknown
+07f3b29 Merge pull request #19 from ninp0/master
+ef29b94 Meshtastic::MQTT module - format tweak in message object when dumping to STDOUT
+2b97702 Merge pull request #18 from ninp0/master
+393b252 README.md - doc tweaks
+9345cb2 Merge pull request #17 from ninp0/master
+ebcb1a1 Meshtastic::MQTT module - pull back the curtain.
+4bb24b6 Merge pull request #16 from ninp0/master
+460c087 Meshtastic::MQTT module - dont display debugging info if block_given? is true
+fd82bc1 Merge pull request #15 from ninp0/master
+c7056b0 Meshtastic::MQTT module - add block support to interact with each message
+ba5f84f Meshtastic::VERSION - bump
+455cc9b Meshtastic::MQTT - #bugfix in #subscribe method when json = true
+af251ed Merge pull request #14 from ninp0/master
+80a392b Meshtastic::MQTT - add #gps_search method
+474774b Merge pull request #13 from ninp0/master
+32af2f9 Meshtastic::MQTT - update usage for #subscribe and #help methods
+d33c05a Merge pull request #12 from ninp0/master
+7126de7 Meshtastic::MQTT - implement message filter parameter on #subscripbe method and code cleanup
+5220cde Merge pull request #11 from ninp0/master
+76de568 README.md - #moretweaks
+5cae453 Merge pull request #10 from ninp0/master
+93e2bb8 README.md - #link_tweaks
+e4c6e61 README.md - Setting expectations
+2a15599 Merge pull request #9 from ninp0/master
+bf0cc6b README.md - Setting expectations
+5c63bb5 Merge pull request #8 from ninp0/master
+a823462 Disable Map object temporarily
+0104d0b Merge pull request #7 from ninp0/master
+5dde96d Include nanopb_pb rSpec
+2b792f2 Ensure Gemfile set google-protobuf version to the same version returned by the protoc command
+641d11d Include nanopb_pb rSpec
+b552585 Include nanopb_pb rSpec
+a06690b Include nanopb_pb
+89fb0d9 Meshtastic::VERSION - bump
+f5ada48 Comment out protobuf modules that are calling unknown proto3_optional method
+c0a9dd9 Comment out protobuf modules that are calling unknown proto3_optional method
+90016bd rSpec - barebones build testing
+41da62c Merge pull request #6 from ninp0/master
+dd5d419 Github Workflow - working barebones
+d35ff76 Merge pull request #5 from ninp0/master
+22abe89 meshtastic.gemspec - few minor tweaks to spec
+64eee43 Merge pull request #4 from ninp0/master
+935e409 upgrade_Gemfile_gems.sh - Skip bundler until A newer bundler version becomes available in Github workflows
+745ebe1 Gemfile - tweak minimum supported bundler version for Github workflows
+479682c Merge pull request #3 from ninp0/master
+22a261d Gemfile - tweak minimum supported bundler version for Github workflows
+450dd6d Merge pull request #2 from ninp0/master
+7839b8f Gemfile - tweak supported bundler for Github workflows
+d9545b1 Merge pull request #1 from ninp0/master
+23fdf18 Gemfile - more gems
+99b70da More build scripts (reinstall gemset)
+664224a Gemfile - include required bundler gems
+06b121d .github/workflows/main.yml - Update to run relevant tasks
+8b373ed Meshtastic::VERSION #bugfix
+9b9f16a README.md updates
+e83c35f Meshtastic Ruby Gem - Initial Alpha Commit w/ Protobuf Generation and operating Meshtastic::MQTT module
+7729c8b Initial commit

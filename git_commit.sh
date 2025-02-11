@@ -9,6 +9,11 @@ if [[ $1 != "" && $2 != "" && $3 != "" ]]; then
   ./upgrade_Gemfile_gems.sh
   ./AUTOGEN_meshtastic_protobufs.sh
   meshtastic_autoinc_version
+  if [[ $tag_this_version_bool == 'true' ]]; then
+    last_tag=$(git tag | tail -n 1)
+    git log $last_tag.. --oneline > CHANGELOG_BETWEEN_TAGS.txt
+  fi
+
   git commit -a -S --author="${1} <${2}>" -m "${3}"
   ./upgrade_meshtastic.sh
   # Tag for every 100 commits (i.e. 0.1.100, 0.1.200, etc)
