@@ -47,8 +47,9 @@ module Meshtastic
 
       mqtt_obj.keep_alive = keep_alive
       mqtt_obj.ack_timeout = ack_timeout
-      mqtt_obj.last_ping_request = 0
-      mqtt_obj.last_ping_response = 0
+      # Not setters, only getters
+      # mqtt_obj.last_ping_request = 0
+      # mqtt_obj.last_ping_response = 0
 
       mqtt_obj
     rescue StandardError => e
