@@ -20,7 +20,8 @@ module Meshtastic
     #   port: 'optional - mqtt port (defaults: 1883)',
     #   username: 'optional - mqtt username (default: meshdev)',
     #   password: 'optional - (default: large4cats)',
-    #   client_id: 'optional - client ID (default: random 4-byte hex string)'
+    #   client_id: 'optional - client ID (default: random 4-byte hex string)',
+    #   keep_alive: 'optional - keep alive interval (default: 21)'
     # )
 
     public_class_method def self.connect(opts = {})
@@ -32,14 +33,18 @@ module Meshtastic
       client_id = opts[:client_id] ||= SecureRandom.random_bytes(4).unpack1('H*').to_s
       client_id = format("%0.8x", client_id) if client_id.is_a?(Integer)
       client_id = client_id.delete('!') if client_id.include?('!')
+      keep_alive = opts[:keep_alive] ||= 21
 
-      MQTTClient.connect(
+      mqtt_obj = MQTTClient.connect(
         host: host,
         port: port,
         username: username,
         password: password,
         client_id: client_id
       )
+      mqtt_obj.keep_alive = keep_alive
+
+      mqtt_obj
     rescue StandardError => e
       raise e
     end
@@ -82,6 +87,8 @@ module Meshtastic
       full_topic = "#{root_topic}/#{region}" if region == '#'
       puts "Subscribing to: #{full_topic}"
       mqtt_obj.subscribe(full_topic, qos)
+
+      # MQTT::ProtocolException: No Ping Response received for 23 seconds (MQTT::ProtocolException)
 
       filter_arr = filter.to_s.split(',').map(&:strip)
       mqtt_obj.get_packet do |packet_bytes|
@@ -270,7 +277,8 @@ module Meshtastic
           port: 'optional - mqtt port (defaults: 1883)',
           username: 'optional - mqtt username (default: meshdev)',
           password: 'optional - (default: large4cats)',
-          client_id: 'optional - client ID (default: random 4-byte hex string)'
+          client_id: 'optional - client ID (default: random 4-byte hex string)',
+          keep_alive: 'optional - keep alive interval (default: 21)'
         )
 
         #{self}.subscribe(
