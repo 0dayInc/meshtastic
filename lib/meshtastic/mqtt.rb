@@ -21,7 +21,8 @@ module Meshtastic
     #   username: 'optional - mqtt username (default: meshdev)',
     #   password: 'optional - (default: large4cats)',
     #   client_id: 'optional - client ID (default: random 4-byte hex string)',
-    #   keep_alive: 'optional - keep alive interval (default: 21)'
+    #   keep_alive: 'optional - keep alive interval (default: 0)',
+    #   ack_timeout: 'optional - acknowledgement timeout (default: 30)'
     # )
 
     public_class_method def self.connect(opts = {})
@@ -33,7 +34,8 @@ module Meshtastic
       client_id = opts[:client_id] ||= SecureRandom.random_bytes(4).unpack1('H*').to_s
       client_id = format("%0.8x", client_id) if client_id.is_a?(Integer)
       client_id = client_id.delete('!') if client_id.include?('!')
-      keep_alive = opts[:keep_alive] ||= 21
+      keep_alive = opts[:keep_alive] ||= 0
+      ack_timeout = opts[:ack_timeout] ||= 30
 
       mqtt_obj = MQTTClient.connect(
         host: host,
@@ -42,7 +44,11 @@ module Meshtastic
         password: password,
         client_id: client_id
       )
+
       mqtt_obj.keep_alive = keep_alive
+      mqtt_obj.ack_timeout = ack_timeout
+      mqtt_obj.last_ping_request = 0
+      mqtt_obj.last_ping_response = 0
 
       mqtt_obj
     rescue StandardError => e
@@ -278,7 +284,8 @@ module Meshtastic
           username: 'optional - mqtt username (default: meshdev)',
           password: 'optional - (default: large4cats)',
           client_id: 'optional - client ID (default: random 4-byte hex string)',
-          keep_alive: 'optional - keep alive interval (default: 21)'
+          keep_alive: 'optional - keep alive interval (default: 0)',
+          ack_timeout: 'optional - acknowledgement timeout (default: 30)'
         )
 
         #{self}.subscribe(
