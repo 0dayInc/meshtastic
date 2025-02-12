@@ -43,7 +43,7 @@ module Meshtastic
       mqtt_obj = MQTTClient.connect(
         host: host,
         port: port,
-        tls: tls,
+        ssl: tls,
         username: username,
         password: password,
         client_id: client_id
