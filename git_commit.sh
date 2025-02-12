@@ -4,7 +4,6 @@ if [[ $1 != "" && $2 != "" && $3 != "" ]]; then
   git config pull.rebase false
   git config commit.gpgsign true
   git pull origin master
-  cd protobufs && git pull && cd -
   git add . --all
   echo 'Updating Gems to Latest Versions in Gemfile...'
   ./upgrade_Gemfile_gems.sh
