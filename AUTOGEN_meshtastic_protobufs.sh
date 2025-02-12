@@ -15,6 +15,9 @@ fi
 cd $mesh_root
 if [[ ! -d $mesh_protobufs_root ]]; then
   sudo git clone https://github.com/meshtastic/protobufs
+else
+  cd $mesh_protobufs_root
+  sudo git pull
 fi
 
 cd $mesh_protobufs_root
