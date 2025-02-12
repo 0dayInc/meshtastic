@@ -18,6 +18,7 @@ module Meshtastic
     # mqtt_obj = Meshtastic::MQQT.connect(
     #   host: 'optional - mqtt host (default: mqtt.meshtastic.org)',
     #   port: 'optional - mqtt port (defaults: 1883)',
+    #   tls: 'optional - use TLS (default: false)',
     #   username: 'optional - mqtt username (default: meshdev)',
     #   password: 'optional - (default: large4cats)',
     #   client_id: 'optional - client ID (default: random 4-byte hex string)',
@@ -29,6 +30,8 @@ module Meshtastic
       # Publicly available MQTT server / credentials by default
       host = opts[:host] ||= 'mqtt.meshtastic.org'
       port = opts[:port] ||= 1883
+      tls = true if opts[:tls]
+      tls = false unless opts[:tls]
       username = opts[:username] ||= 'meshdev'
       password = opts[:password] ||= 'large4cats'
       client_id = opts[:client_id] ||= SecureRandom.random_bytes(4).unpack1('H*').to_s
@@ -40,6 +43,7 @@ module Meshtastic
       mqtt_obj = MQTTClient.connect(
         host: host,
         port: port,
+        tls: tls,
         username: username,
         password: password,
         client_id: client_id
@@ -279,6 +283,7 @@ module Meshtastic
         mqtt_obj = #{self}.connect(
           host: 'optional - mqtt host (default: mqtt.meshtastic.org)',
           port: 'optional - mqtt port (defaults: 1883)',
+          tls: 'optional - use TLS (default: false)',
           username: 'optional - mqtt username (default: meshdev)',
           password: 'optional - (default: large4cats)',
           client_id: 'optional - client ID (default: random 4-byte hex string)',
