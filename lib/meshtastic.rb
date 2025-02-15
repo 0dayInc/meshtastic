@@ -370,7 +370,9 @@ module Meshtastic
     case msg_type
     when :ADMIN_APP
       decoder = Meshtastic::AdminMessage
-    when :ATAK_FORWARDER, :ATAK_PLUGIN
+    when :ATAK_PLUGIN, :TEXT_MESSAGE_APP, :UNKNOWN_APP
+      decoder = Meshtastic::Data
+    when :ATAK_FORWARDER
       decoder = Meshtastic::TAKPacket
       # when :AUDIO_APP
       # decoder = Meshtastic::Audio
@@ -407,8 +409,6 @@ module Meshtastic
       decoder = Meshtastic::Compressed
     when :STORE_FORWARD_APP
       decoder = Meshtastic::StoreAndForward
-    when :TEXT_MESSAGE_APP, :UNKNOWN_APP
-      decoder = Meshtastic::Data
     when :TELEMETRY_APP
       decoder = Meshtastic::Telemetry
     when :TRACEROUTE_APP
