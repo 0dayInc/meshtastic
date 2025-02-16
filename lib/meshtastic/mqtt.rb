@@ -65,6 +65,7 @@ module Meshtastic
     #   channel_topic: 'optional - channel ID path e.g. "2/stat/#" (default: "2/e/LongFast/#")',
     #   psks: 'optional - hash of :channel_id => psk key value pairs (default: { LongFast: "AQ==" })',
     #   qos: 'optional - quality of service (default: 0)',
+    #   exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)',
     #   filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
     #   gps_metadata: 'optional - include GPS metadata in output (default: false)',
     #   include_raw: 'optional - include raw packet data in output (default: false)'
@@ -86,6 +87,7 @@ module Meshtastic
 
       qos = opts[:qos] ||= 0
       json = opts[:json] ||= false
+      exclude = opts[:exclude]
       filter = opts[:filter]
       gps_metadata = opts[:gps_metadata] ||= false
       include_raw = opts[:include_raw] ||= false
@@ -99,6 +101,7 @@ module Meshtastic
       # MQTT::ProtocolException: No Ping Response received for 23 seconds (MQTT::ProtocolException)
 
       filter_arr = filter.to_s.split(',').map(&:strip)
+      exclude_arr = exclude.to_s.split(',').map(&:strip)
       mqtt_obj.get_packet do |packet_bytes|
         raw_packet = packet_bytes.to_s if include_raw
         raw_topic = packet_bytes.topic ||= ''
@@ -196,9 +199,13 @@ module Meshtastic
 
           next
         ensure
+          exclude_arr = [message[:id].to_s] if exclude.nil?
           filter_arr = [message[:id].to_s] if filter.nil?
           if message.is_a?(Hash)
             flat_message = message.values.join(' ')
+
+            disp = false if exclude_arr.first == message[:id] ||
+                            exclude_arr.all? { |exclude| flat_message.include?(exclude) }
 
             disp = true if filter_arr.first == message[:id] ||
                            filter_arr.all? { |filter| flat_message.include?(filter) }
@@ -299,6 +306,7 @@ module Meshtastic
           psks: 'optional - hash of :channel_id => psk key value pairs (default: { LongFast: 'AQ==' })',
           qos: 'optional - quality of service (default: 0)',
           json: 'optional - JSON output (default: false)',
+          exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)',
           filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
           gps_metadata: 'optional - include GPS metadata in output (default: false)'
         )

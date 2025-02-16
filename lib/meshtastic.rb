@@ -441,6 +441,11 @@ module Meshtastic
       payload[:macaddr] = mac_hex_str
     end
 
+    if payload.keys.include?(:public_key)
+      public_key_raw = payload[:public_key]
+      payload[:public_key] = Base64.strict_encode64(public_key_raw)
+    end
+
     if payload.keys.include?(:time)
       time_int = payload[:time]
       if time_int.is_a?(Integer)
