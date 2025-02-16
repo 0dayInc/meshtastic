@@ -11,34 +11,92 @@ require 'uart'
 # Plugin used to interact with Meshtastic nodes
 module Meshtastic
   module Serial
-    @session_data = []
+    @console_data = []
+    @proto_data = []
 
     # Supported Method Parameters::
-    # session_thread = init_session_thread(
+    # console_thread = init_console_thread(
     #   serial_conn: 'required - SerialPort.new object'
     # )
 
-    private_class_method def self.init_session_thread(opts = {})
+    private_class_method def self.init_console_thread(opts = {})
       serial_conn = opts[:serial_conn]
 
-      # Spin up a serial_obj session_thread
+      # Spin up a serial_obj console_thread
       Thread.new do
         # serial_conn.read_timeout = -1
         serial_conn.flush
 
         loop do
           serial_conn.wait_readable
-          # Read raw chars into @session_data,
+          # Read raw chars into @console_data,
           # convert to readable bytes if need-be
           # later.
-          @session_data << serial_conn.readchar.force_encoding('UTF-8')
+          @console_data << serial_conn.readchar.force_encoding('UTF-8')
         end
       end
     rescue StandardError => e
-      session_thread&.terminate
+      console_thread&.terminate
       serial_conn&.close
       serial_conn = nil
 
+      raise e
+    end
+
+    # Supported Method Parameters::
+    # proto_thread = init_proto_thread(
+    #   serial_conn: 'required - SerialPort.new object'
+    # )
+
+    private_class_method def self.init_proto_thread(opts = {})
+      serial_conn = opts[:serial_conn]
+
+      # Spin up a serial_obj console_thread
+      Thread.new do
+        # serial_conn.read_timeout = -1
+        serial_conn.flush
+        from_radio = Meshtastic::FromRadio.new
+
+        loop do
+          serial_conn.wait_readable
+          # Read raw chars into @console_data,
+          # convert to readable bytes if need-be
+          # later.
+          @proto_data << from_radio.to_h
+        end
+      end
+    rescue StandardError => e
+      proto_thread&.terminate
+      serial_conn&.close
+      serial_conn = nil
+
+      raise e
+    end
+
+    # Supported Method Parameters::
+    # Meshtastic::Serial.request(
+    #   serial_obj: 'required serial_obj returned from #connect method',
+    #   payload: 'required - array of bytes OR string to write to serial device (e.g. [0x00, 0x41, 0x90, 0x00] OR "ATDT+15555555\r\n"'
+    # )
+
+    public_class_method def self.request(opts = {})
+      serial_obj = opts[:serial_obj]
+      payload = opts[:payload]
+      serial_conn = serial_obj[:serial_conn]
+
+      byte_arr = nil
+      byte_arr = payload if payload.instance_of?(Array)
+      byte_arr = payload.chars if payload.instance_of?(String)
+      raise "ERROR: Invalid payload type: #{payload.class}" if byte_arr.nil?
+
+      byte_arr.each do |byte|
+        serial_conn.putc(byte)
+      end
+
+      sleep(0.1)
+      serial_conn.flush
+    rescue StandardError => e
+      disconnect(serial_obj: serial_obj) unless serial_obj.nil?
       raise e
     end
 
@@ -71,7 +129,6 @@ module Meshtastic
       raise "Invalid parity: #{opts[:parity]}" if parity.nil?
 
       mode = "#{data_bits}#{parity}#{stop_bits}"
-      puts mode
 
       serial_conn = UART.open(
         block_dev,
@@ -81,9 +138,19 @@ module Meshtastic
 
       serial_obj = {}
       serial_obj[:serial_conn] = serial_conn
-      serial_obj[:session_thread] = init_session_thread(
+      serial_obj[:console_thread] = init_console_thread(
         serial_conn: serial_conn
       )
+      serial_obj[:proto_thread] = init_proto_thread(
+        serial_conn: serial_conn
+      )
+
+      # 32 bytes of start2_byte in a byte array
+      start2_byte_arr = [START2].pack('C') * 32
+      request(serial_obj: serial_obj, payload: start2_byte_arr)
+
+      mui = Meshtastic::MeshInterface.new
+      mui.start_config
 
       serial_obj
     rescue StandardError => e
@@ -92,38 +159,57 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
-    # session_data = PWN::Plugins::Serial.dump_session_data
+    # console_data = Meshtastic::Serial.dump_console_data
 
-    public_class_method def self.dump_session_data
+    public_class_method def self.dump_console_data
       if block_given?
-        @session_data.join.split("\n").each do |data|
-          yield data
-        end
+        @console_data.join.split("\n").each { |data| yield data }
       else
-        @session_data.join
+        @console_data.join
       end
     rescue StandardError => e
       raise e
     end
 
     # Supported Method Parameters::
-    # session_data = PWN::Plugins::Serial.flush_session_data
+    # console_data = Meshtastic::Serial.dump_proto_data
 
-    public_class_method def self.flush_session_data
-      @session_data.clear
+    public_class_method def self.dump_proto_data
+      if block_given?
+        @proto_data.each { |proto_hash| yield proto_hash }
+      else
+        @proto_data
+      end
     rescue StandardError => e
       raise e
     end
 
     # Supported Method Parameters::
-    # session_data = PWN::Plugins::Serial.monitor(
-    #   duration: 'optional - duration to monitor (default: 3)',
+    # console_data = Meshtastic::Serial.flush_data(opts = {})
+
+    public_class_method def self.flush_data(opts = {})
+      target = opts[:target]
+      case target
+      when :console
+        @console_data.clear
+      when :proto
+        @proto_data.clear
+      else
+        raise "ERROR: supported targets are :console or :proto"
+      end
+    rescue StandardError => e
+      raise e
+    end
+
+    # Supported Method Parameters::
+    # console_data = Meshtastic::Serial.monitor_console(
+    #   refresh: 'optional - refresh interval (default: 3)',
     #   include: 'optional - comma-delimited string(s) to include in message (default: nil)',
     #   exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)'
     # )
 
-    public_class_method def self.monitor(opts = {})
-      duration = opts[:duration] ||= 3
+    public_class_method def self.monitor_console(opts = {})
+      refresh = opts[:refresh] ||= 3
       include = opts[:include]
       exclude = opts[:exclude]
 
@@ -131,19 +217,52 @@ module Meshtastic
         exclude_arr = exclude.to_s.split(',').map(&:strip)
         include_arr = include.to_s.split(',').map(&:strip)
 
-        dump_session_data do |data|
+        dump_console_data do |data|
           disp = false
           disp = true if exclude_arr.none? { |exclude| data.include?(exclude) } && (
                            include_arr.empty? ||
                            include_arr.all? { |include| data.include?(include) }
                          )
           puts data if disp
-          flush_session_data
+          flush_data(target: :console)
         end
-        sleep duration
+        sleep refresh
       end
     rescue Interrupt
-      puts "\nCTRL+C detected. Breaking out of monitor mode..."
+      puts "\nCTRL+C detected. Breaking out of console mode..."
+    rescue StandardError => e
+      raise e
+    end
+
+    # Supported Method Parameters::
+    # console_data = Meshtastic::Serial.monitor_proto(
+    #   refresh: 'optional - refresh interval (default: 3)',
+    #   include: 'optional - comma-delimited string(s) to include in message (default: nil)',
+    #   exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)'
+    # )
+
+    public_class_method def self.monitor_proto(opts = {})
+      refresh = opts[:refresh] ||= 3
+      include = opts[:include]
+      exclude = opts[:exclude]
+
+      loop do
+        exclude_arr = exclude.to_s.split(',').map(&:strip)
+        include_arr = include.to_s.split(',').map(&:strip)
+
+        dump_proto_data do |data|
+          disp = false
+          disp = true if exclude_arr.none? { |exclude| data.include?(exclude) } && (
+                           include_arr.empty? ||
+                           include_arr.all? { |include| data.include?(include) }
+                         )
+          puts data if disp
+          flush_data(target: :proto)
+        end
+        sleep refresh
+      end
+    rescue Interrupt
+      puts "\nCTRL+C detected. Breaking out of proto mode..."
     rescue StandardError => e
       raise e
     end
@@ -174,7 +293,8 @@ module Meshtastic
       raise 'ERROR: psks parameter must be a hash of :channel_id => psk key value pairs' unless psks.is_a?(Hash)
 
       psks[:LongFast] = public_psk if psks[:LongFast] == 'AQ=='
-      psks = Meshtastic.get_cipher_keys(psks: psks)
+      mui = Meshtastic::MeshInterface.new
+      psks = mui.get_cipher_keys(psks: psks)
 
       qos = opts[:qos] ||= 0
       json = opts[:json] ||= false
@@ -270,7 +390,8 @@ module Meshtastic
             # payload = Meshtastic::Data.decode(message[:decoded][:payload]).to_h
             payload = message[:decoded][:payload]
             msg_type = message[:decoded][:portnum]
-            message[:decoded][:payload] = Meshtastic.decode_payload(
+            mui = Meshtastic::MeshInterface.new
+            message[:decoded][:payload] = mui.decode_payload(
               payload: payload,
               msg_type: msg_type,
               gps_metadata: gps_metadata
@@ -337,7 +458,7 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
-    # Meshtastic.send_text(
+    # Meshtastic::Serial.send_text(
     #   serial_obj: 'required - serial_obj returned from #connect method',
     #   from: 'required - From ID (String or Integer) (Default: "!00000b0b")',
     #   to: 'optional - Destination ID (Default: "!ffffffff")',
@@ -356,9 +477,11 @@ module Meshtastic
       opts[:via] = :radio
 
       # TODO: Implement chunked message to deal with large messages
-      protobuf_text = Meshtastic.send_text(opts)
+      mui = Meshtastic::MeshInterface.new
+      protobuf_text = mui.send_text(opts)
 
-      serial_obj.publish(topic, protobuf_text)
+      # TODO: serial equivalent of publish
+      # serial_obj.publish(topic, protobuf_text)
     rescue StandardError => e
       raise e
     end
@@ -397,6 +520,18 @@ module Meshtastic
           client_id: 'optional - client ID (default: random 4-byte hex string)',
           keep_alive: 'optional - keep alive interval (default: 15)',
           ack_timeout: 'optional - acknowledgement timeout (default: 30)'
+        )
+
+        #{self}.monitor_console(
+          refresh: 'optional - refresh interval (default: 3)',
+          include: 'optional - comma-delimited string(s) to include in message (default: nil)',
+          exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)'
+        )
+
+        #{self}.monitor_proto(
+          refresh: 'optional - refresh interval (default: 3)',
+          include: 'optional - comma-delimited string(s) to include in message (default: nil)',
+          exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)'
         )
 
         #{self}.subscribe(

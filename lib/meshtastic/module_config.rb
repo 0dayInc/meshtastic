@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'meshtastic/admin_pb'
+require 'meshtastic/module_config_pb'
 
 # Plugin used to interact with Meshtastic nodes
 module Meshtastic
