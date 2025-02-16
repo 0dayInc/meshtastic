@@ -14,9 +14,38 @@ module Meshtastic
     @session_data = []
 
     # Supported Method Parameters::
+    # session_thread = init_session_thread(
+    #   serial_conn: 'required - SerialPort.new object'
+    # )
+
+    private_class_method def self.init_session_thread(opts = {})
+      serial_conn = opts[:serial_conn]
+
+      # Spin up a serial_obj session_thread
+      Thread.new do
+        # serial_conn.read_timeout = -1
+        serial_conn.flush
+
+        loop do
+          serial_conn.wait_readable
+          # Read raw chars into @session_data,
+          # convert to readable bytes if need-be
+          # later.
+          @session_data << serial_conn.readchar.force_encoding('UTF-8')
+        end
+      end
+    rescue StandardError => e
+      session_thread&.terminate
+      serial_conn&.close
+      serial_conn = nil
+
+      raise e
+    end
+
+    # Supported Method Parameters::
     # serial_obj = Meshtastic::Serial.connect(
     #   block_dev: 'optional - serial block device path (defaults to /dev/ttyUSB0)',
-    #   baud: 'optional - (defaults to 9600)',
+    #   baud: 'optional - (defaults to 115200)',
     #   data_bits: 'optional - (defaults to 8)',
     #   stop_bits: 'optional - (defaults to 1)',
     #   parity: 'optional - :even|:mark|:odd|:space|:none (defaults to :none)'
@@ -26,7 +55,7 @@ module Meshtastic
       block_dev = opts[:block_dev] ||= '/dev/ttyUSB0'
       raise "Invalid block device: #{block_dev}" unless File.exist?(block_dev)
 
-      baud = opts[:baud] ||= 9_600
+      baud = opts[:baud] ||= 115_200
       data_bits = opts[:data_bits] ||= 8
       stop_bits = opts[:stop_bits] ||= 1
       parity = opts[:parity] ||= :none
@@ -59,6 +88,63 @@ module Meshtastic
       serial_obj
     rescue StandardError => e
       disconnect(serial_obj: serial_obj) unless serial_obj.nil?
+      raise e
+    end
+
+    # Supported Method Parameters::
+    # session_data = PWN::Plugins::Serial.dump_session_data
+
+    public_class_method def self.dump_session_data
+      if block_given?
+        @session_data.join.split("\n").each do |data|
+          yield data
+        end
+      else
+        @session_data.join
+      end
+    rescue StandardError => e
+      raise e
+    end
+
+    # Supported Method Parameters::
+    # session_data = PWN::Plugins::Serial.flush_session_data
+
+    public_class_method def self.flush_session_data
+      @session_data.clear
+    rescue StandardError => e
+      raise e
+    end
+
+    # Supported Method Parameters::
+    # session_data = PWN::Plugins::Serial.monitor(
+    #   duration: 'optional - duration to monitor (default: 3)',
+    #   include: 'optional - comma-delimited string(s) to include in message (default: nil)',
+    #   exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)'
+    # )
+
+    public_class_method def self.monitor(opts = {})
+      duration = opts[:duration] ||= 3
+      include = opts[:include]
+      exclude = opts[:exclude]
+
+      loop do
+        exclude_arr = exclude.to_s.split(',').map(&:strip)
+        include_arr = include.to_s.split(',').map(&:strip)
+
+        dump_session_data do |data|
+          disp = false
+          disp = true if exclude_arr.none? { |exclude| data.include?(exclude) } && (
+                           include_arr.empty? ||
+                           include_arr.all? { |include| data.include?(include) }
+                         )
+          puts data if disp
+          flush_session_data
+        end
+        sleep duration
+      end
+    rescue Interrupt
+      puts "\nCTRL+C detected. Breaking out of monitor mode..."
+    rescue StandardError => e
       raise e
     end
 
