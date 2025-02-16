@@ -107,7 +107,6 @@ module Meshtastic
         raw_payload = packet_bytes.payload ||= ''
 
         begin
-          disp = false
           decoded_payload_hash = {}
           message = {}
           stdout_message = ''
@@ -209,14 +208,18 @@ module Meshtastic
 
           next
         ensure
-          include_arr = [message[:id].to_s] if include_arr.empty?
+          # include_arr = [message[:id].to_s] if include_arr.empty?
           if message.is_a?(Hash)
             flat_message = message.values.join(' ')
 
-            disp = true if exclude_arr.none? { |exclude| flat_message.include?(exclude) } && (
-                             include_arr.first == message[:id] ||
-                             include_arr.all? { |include| flat_message.include?(include) }
-                           )
+            disp = false
+            # disp = true if exclude_arr.none? { |exclude| flat_message.include?(exclude) } && (
+            #                  include_arr.first == message[:id] ||
+            #                  include_arr.all? { |include| flat_message.include?(include) }
+            #                )
+
+            disp = true if exclude_arr.none? { |exclude| flat_message.include?(exclude) } &&
+                           include_arr.all? { |include| flat_message.include?(include) }
 
             if disp
               if block_given?
