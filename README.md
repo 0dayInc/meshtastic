@@ -24,7 +24,7 @@ If bundler is not being used to manage dependencies, install the gem by executin
 
 ## Usage
 
-At the moment the only module available is `Meshtastic::MQTT`.  To view MQTT messages, and filter for all messages containing `_APP` _and_ `LongFast` strings, use the following code:
+At the moment the only module available is `Meshtastic::MQTT`.  To view MQTT messages, and include only messages containing `_APP` _and_ `LongFast` strings, use the following code:
 
 ```ruby
 require 'meshtastic'
@@ -32,7 +32,7 @@ Meshtastic::MQTT.help
 mqtt_obj = Meshastic::MQTT.connect
 Meshtastic::MQTT.subscribe(
   mqtt_obj: mqtt_obj,
-  filter: '_APP, LongFast'
+  include: '_APP, LongFast'
 )
 ```
 
@@ -78,7 +78,7 @@ Meshtastic::MQTT.subscribe(
   region: 'US',
   channel_topic: '2/e/LongFast/#',
   psks: { LongFast: 'AQ==' },
-  filter: '!YOUR_CLIENT_ID'
+  include: '!YOUR_CLIENT_ID'
 ) do |message|
   puts message.inspect
 end
