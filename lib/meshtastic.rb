@@ -370,10 +370,15 @@ module Meshtastic
     case msg_type
     when :ADMIN_APP
       decoder = Meshtastic::AdminMessage
-    when :ATAK_PLUGIN, :TEXT_MESSAGE_APP, :UNKNOWN_APP
-      decoder = Meshtastic::Data
-    when :ATAK_FORWARDER
-      decoder = Meshtastic::TAKPacket
+    when :ATAK_FORWARDER, :ATAK_PLUGIN
+      # decoder = Meshtastic::TAKPacket
+      decoder = Meshtastic::GeoChat
+      # decoder = Meshtastic::Group
+      # decoder = Meshtastic::Status
+      # decoder = Meshtastic::Contact
+      # decoder = Meshtastic::PLI
+      # decoder = Meshtastic::Team
+      # decoder = Meshtastic::MemberRole
       # when :AUDIO_APP
       # decoder = Meshtastic::Audio
     when :DETECTION_SENSOR_APP
@@ -411,6 +416,8 @@ module Meshtastic
       decoder = Meshtastic::StoreAndForward
     when :TELEMETRY_APP
       decoder = Meshtastic::Telemetry
+    when :TEXT_MESSAGE_APP, :UNKNOWN_APP
+      decoder = Meshtastic::Data
     when :TRACEROUTE_APP
       decoder = Meshtastic::RouteDiscovery
     when :WAYPOINT_APP
@@ -422,6 +429,7 @@ module Meshtastic
       return payload
     end
 
+    payload = decoder.decode(payload).to_h
     payload = decoder.decode(payload).to_h
 
     if payload.keys.include?(:latitude_i)
