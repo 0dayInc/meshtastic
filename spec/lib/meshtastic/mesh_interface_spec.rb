@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::Mesh do
+describe Meshtastic::MeshInterface do
 end

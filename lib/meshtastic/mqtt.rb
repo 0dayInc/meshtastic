@@ -82,7 +82,8 @@ module Meshtastic
       raise 'ERROR: psks parameter must be a hash of :channel_id => psk key value pairs' unless psks.is_a?(Hash)
 
       psks[:LongFast] = public_psk if psks[:LongFast] == 'AQ=='
-      psks = Meshtastic.get_cipher_keys(psks: psks)
+      mui = Meshtastic::MeshInterface.new
+      psks = mui.get_cipher_keys(psks: psks)
 
       qos = opts[:qos] ||= 0
       json = opts[:json] ||= false
@@ -176,7 +177,8 @@ module Meshtastic
             # payload = Meshtastic::Data.decode(message[:decoded][:payload]).to_h
             payload = message[:decoded][:payload]
             msg_type = message[:decoded][:portnum]
-            message[:decoded][:payload] = Meshtastic.decode_payload(
+            mui = Meshtastic::MeshInterface.new
+            message[:decoded][:payload] = mui.decode_payload(
               payload: payload,
               msg_type: msg_type,
               gps_metadata: gps_metadata
@@ -247,7 +249,7 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
-    # Meshtastic.send_text(
+    # Meshtastic::MQTT.send_text(
     #   mqtt_obj: 'required - mqtt_obj returned from #connect method',
     #   from: 'required - From ID (String or Integer) (Default: "!00000b0b")',
     #   to: 'optional - Destination ID (Default: "!ffffffff")',
@@ -266,7 +268,8 @@ module Meshtastic
       opts[:via] = :mqtt
 
       # TODO: Implement chunked message to deal with large messages
-      protobuf_text = Meshtastic.send_text(opts)
+      mui = Meshtastic::Interface.new
+      protobuf_text = mui.send_text(opts)
 
       mqtt_obj.publish(topic, protobuf_text)
     rescue StandardError => e
