@@ -371,14 +371,7 @@ module Meshtastic
     when :ADMIN_APP
       decoder = Meshtastic::AdminMessage
     when :ATAK_FORWARDER, :ATAK_PLUGIN
-      # decoder = Meshtastic::TAKPacket
-      decoder = Meshtastic::GeoChat
-      # decoder = Meshtastic::Group
-      # decoder = Meshtastic::Status
-      # decoder = Meshtastic::Contact
-      # decoder = Meshtastic::PLI
-      # decoder = Meshtastic::Team
-      # decoder = Meshtastic::MemberRole
+      decoder = Meshtastic::TAKPacket
       # when :AUDIO_APP
       # decoder = Meshtastic::Audio
     when :DETECTION_SENSOR_APP
@@ -429,7 +422,6 @@ module Meshtastic
       return payload
     end
 
-    payload = decoder.decode(payload).to_h
     payload = decoder.decode(payload).to_h
 
     if payload.keys.include?(:latitude_i)
