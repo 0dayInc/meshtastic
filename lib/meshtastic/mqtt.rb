@@ -134,6 +134,11 @@ module Meshtastic
             end
           end
 
+          if message.keys.include?(:public_key)
+            raw_public_key = message[:public_key]
+            message[:public_key] = Base64.strict_encode64(raw_public_key)
+          end
+
           # If encrypted_message is not nil, then decrypt
           # the message prior to decoding.
           encrypted_message = message[:encrypted]
@@ -204,11 +209,11 @@ module Meshtastic
           if message.is_a?(Hash)
             flat_message = message.values.join(' ')
 
-            disp = false if exclude_arr.first == message[:id] ||
-                            exclude_arr.all? { |exclude| flat_message.include?(exclude) }
-
             disp = true if filter_arr.first == message[:id] ||
                            filter_arr.all? { |filter| flat_message.include?(filter) }
+
+            disp = false if exclude_arr.first == message[:id] ||
+                            exclude_arr.all? { |exclude| flat_message.include?(exclude) }
 
             if disp
               if block_given?
