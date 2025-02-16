@@ -371,14 +371,7 @@ module Meshtastic
     when :ADMIN_APP
       decoder = Meshtastic::AdminMessage
     when :ATAK_FORWARDER, :ATAK_PLUGIN
-      # decoder = Meshtastic::TAKPacket
-      decoder = Meshtastic::GeoChat
-      # decoder = Meshtastic::Group
-      # decoder = Meshtastic::Status
-      # decoder = Meshtastic::Contact
-      # decoder = Meshtastic::PLI
-      # decoder = Meshtastic::Team
-      # decoder = Meshtastic::MemberRole
+      decoder = Meshtastic::TAKPacket
       # when :AUDIO_APP
       # decoder = Meshtastic::Audio
     when :DETECTION_SENSOR_APP
@@ -430,7 +423,6 @@ module Meshtastic
     end
 
     payload = decoder.decode(payload).to_h
-    payload = decoder.decode(payload).to_h
 
     if payload.keys.include?(:latitude_i)
       lat = payload[:latitude_i] * 0.0000001
@@ -447,6 +439,11 @@ module Meshtastic
       mac_hex_arr = mac_raw.bytes.map { |byte| byte.to_s(16).rjust(2, '0') }
       mac_hex_str = mac_hex_arr.join(':')
       payload[:macaddr] = mac_hex_str
+    end
+
+    if payload.keys.include?(:public_key)
+      public_key_raw = payload[:public_key]
+      payload[:public_key] = Base64.strict_encode64(public_key_raw)
     end
 
     if payload.keys.include?(:time)
