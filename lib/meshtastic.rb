@@ -45,6 +45,7 @@ module Meshtastic
   autoload :Portnums, 'meshtastic/portnums'
   autoload :RemoteHardware, 'meshtastic/remote_hardware'
   autoload :RTTTL, 'meshtastic/rtttl'
+  autoload :Serial, 'meshtastic/serial'
   autoload :Storeforward, 'meshtastic/storeforward'
   autoload :Telemetry, 'meshtastic/telemetry'
   autoload :Xmodem, 'meshtastic/xmodem'

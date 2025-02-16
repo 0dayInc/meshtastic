@@ -2,63 +2,69 @@
 
 require 'base64'
 require 'geocoder'
+require 'io/wait'
 require 'json'
-require 'mqtt'
 require 'openssl'
 require 'securerandom'
-
-# Avoiding Namespace Collisions
-MQTTClient = MQTT::Client
+require 'uart'
 
 # Plugin used to interact with Meshtastic nodes
 module Meshtastic
-  module MQTT
+  module Serial
+    @session_data = []
+
     # Supported Method Parameters::
-    # mqtt_obj = Meshtastic::MQTT.connect(
-    #   host: 'optional - mqtt host (default: mqtt.meshtastic.org)',
-    #   port: 'optional - mqtt port (defaults: 1883)',
-    #   tls: 'optional - use TLS (default: false)',
-    #   username: 'optional - mqtt username (default: meshdev)',
-    #   password: 'optional - (default: large4cats)',
-    #   client_id: 'optional - client ID (default: random 4-byte hex string)',
-    #   keep_alive: 'optional - keep alive interval (default: 15)',
-    #   ack_timeout: 'optional - acknowledgement timeout (default: 30)'
+    # serial_obj = Meshtastic::Serial.connect(
+    #   block_dev: 'optional - serial block device path (defaults to /dev/ttyUSB0)',
+    #   baud: 'optional - (defaults to 9600)',
+    #   data_bits: 'optional - (defaults to 8)',
+    #   stop_bits: 'optional - (defaults to 1)',
+    #   parity: 'optional - :even|:mark|:odd|:space|:none (defaults to :none)'
     # )
 
     public_class_method def self.connect(opts = {})
-      # Publicly available MQTT server / credentials by default
-      host = opts[:host] ||= 'mqtt.meshtastic.org'
-      port = opts[:port] ||= 1883
-      tls = true if opts[:tls]
-      tls = false unless opts[:tls]
-      username = opts[:username] ||= 'meshdev'
-      password = opts[:password] ||= 'large4cats'
-      client_id = opts[:client_id] ||= SecureRandom.random_bytes(4).unpack1('H*').to_s
-      client_id = format("%0.8x", client_id) if client_id.is_a?(Integer)
-      client_id = client_id.delete('!') if client_id.include?('!')
-      keep_alive = opts[:keep_alive] ||= 15
-      ack_timeout = opts[:ack_timeout] ||= 30
+      block_dev = opts[:block_dev] ||= '/dev/ttyUSB0'
+      raise "Invalid block device: #{block_dev}" unless File.exist?(block_dev)
 
-      mqtt_obj = MQTTClient.connect(
-        host: host,
-        port: port,
-        ssl: tls,
-        username: username,
-        password: password,
-        client_id: client_id
+      baud = opts[:baud] ||= 9_600
+      data_bits = opts[:data_bits] ||= 8
+      stop_bits = opts[:stop_bits] ||= 1
+      parity = opts[:parity] ||= :none
+
+      case parity.to_s.to_sym
+      when :even
+        parity = 'E'
+      when :odd
+        parity = 'O'
+      when :none
+        parity = 'N'
+      end
+      raise "Invalid parity: #{opts[:parity]}" if parity.nil?
+
+      mode = "#{data_bits}#{parity}#{stop_bits}"
+      puts mode
+
+      serial_conn = UART.open(
+        block_dev,
+        baud,
+        mode
       )
 
-      mqtt_obj.keep_alive = keep_alive
-      mqtt_obj.ack_timeout = ack_timeout
+      serial_obj = {}
+      serial_obj[:serial_conn] = serial_conn
+      serial_obj[:session_thread] = init_session_thread(
+        serial_conn: serial_conn
+      )
 
-      mqtt_obj
+      serial_obj
     rescue StandardError => e
+      disconnect(serial_obj: serial_obj) unless serial_obj.nil?
       raise e
     end
 
     # Supported Method Parameters::
-    # Meshtastic::MQTT.subscribe(
-    #   mqtt_obj: 'required - mqtt_obj returned from #connect method'
+    # Meshtastic::Serial.subscribe(
+    #   serial_obj: 'required - serial_obj returned from #connect method'
     #   root_topic: 'optional - root topic (default: msh)',
     #   region: 'optional - region e.g. 'US/VA', etc (default: US)',
     #   channel_topic: 'optional - channel ID path e.g. "2/stat/#" (default: "2/e/LongFast/#")',
@@ -71,7 +77,7 @@ module Meshtastic
     # )
 
     public_class_method def self.subscribe(opts = {})
-      mqtt_obj = opts[:mqtt_obj]
+      serial_obj = opts[:serial_obj]
       root_topic = opts[:root_topic] ||= 'msh'
       region = opts[:region] ||= 'US'
       channel_topic = opts[:channel_topic] ||= '2/e/LongFast/#'
@@ -95,13 +101,13 @@ module Meshtastic
       full_topic = "#{root_topic}/#{region}/#{channel_topic}"
       full_topic = "#{root_topic}/#{region}" if region == '#'
       puts "Subscribing to: #{full_topic}"
-      mqtt_obj.subscribe(full_topic, qos)
+      serial_obj.subscribe(full_topic, qos)
 
       # MQTT::ProtocolException: No Ping Response received for 23 seconds (MQTT::ProtocolException)
 
       include_arr = include.to_s.split(',').map(&:strip)
       exclude_arr = exclude.to_s.split(',').map(&:strip)
-      mqtt_obj.get_packet do |packet_bytes|
+      serial_obj.get_packet do |packet_bytes|
         raw_packet = packet_bytes.to_s if include_raw
         raw_topic = packet_bytes.topic ||= ''
         raw_payload = packet_bytes.payload ||= ''
@@ -115,7 +121,8 @@ module Meshtastic
           if json
             decoded_payload_hash = JSON.parse(raw_payload, symbolize_names: true)
           else
-            decoded_payload = Meshtastic::ServiceEnvelope.decode(raw_payload)
+            # decoded_payload = Meshtastic::ToRadio.decode(raw_payload)
+            decoded_payload = Meshtastic::FromRadio.decode(raw_payload)
             decoded_payload_hash = decoded_payload.to_h
           end
 
@@ -240,12 +247,12 @@ module Meshtastic
     rescue StandardError => e
       raise e
     ensure
-      mqtt_obj.disconnect if mqtt_obj
+      serial_obj.disconnect if serial_obj
     end
 
     # Supported Method Parameters::
     # Meshtastic.send_text(
-    #   mqtt_obj: 'required - mqtt_obj returned from #connect method',
+    #   serial_obj: 'required - serial_obj returned from #connect method',
     #   from: 'required - From ID (String or Integer) (Default: "!00000b0b")',
     #   to: 'optional - Destination ID (Default: "!ffffffff")',
     #   topic: 'optional - topic to publish to (Default: "msh/US/2/e/LongFast/1")',
@@ -258,26 +265,26 @@ module Meshtastic
     #   psks: 'optional - hash of :channel_id => psk key value pairs (default: { LongFast: "AQ==" })'
     # )
     public_class_method def self.send_text(opts = {})
-      mqtt_obj = opts[:mqtt_obj]
+      serial_obj = opts[:serial_obj]
       topic = opts[:topic] ||= 'msh/US/2/e/LongFast/#'
-      opts[:via] = :mqtt
+      opts[:via] = :radio
 
       # TODO: Implement chunked message to deal with large messages
       protobuf_text = Meshtastic.send_text(opts)
 
-      mqtt_obj.publish(topic, protobuf_text)
+      serial_obj.publish(topic, protobuf_text)
     rescue StandardError => e
       raise e
     end
 
     # Supported Method Parameters::
-    # mqtt_obj = Meshtastic.disconnect(
-    #   mqtt_obj: 'required - mqtt_obj returned from #connect method'
+    # serial_obj = Meshtastic.disconnect(
+    #   serial_obj: 'required - serial_obj returned from #connect method'
     # )
     public_class_method def self.disconnect(opts = {})
-      mqtt_obj = opts[:mqtt_obj]
+      serial_obj = opts[:serial_obj]
 
-      mqtt_obj.disconnect if mqtt_obj
+      serial_obj.disconnect if serial_obj
       nil
     rescue StandardError => e
       raise e
@@ -295,7 +302,7 @@ module Meshtastic
 
     public_class_method def self.help
       puts "USAGE:
-        mqtt_obj = #{self}.connect(
+        serial_obj = #{self}.connect(
           host: 'optional - mqtt host (default: mqtt.meshtastic.org)',
           port: 'optional - mqtt port (defaults: 1883)',
           tls: 'optional - use TLS (default: false)',
@@ -307,7 +314,7 @@ module Meshtastic
         )
 
         #{self}.subscribe(
-          mqtt_obj: 'required - mqtt_obj object returned from #connect method',
+          serial_obj: 'required - serial_obj object returned from #connect method',
           root_topic: 'optional - root topic (default: msh)',
           region: 'optional - region e.g. 'US/VA', etc (default: US)',
           channel_topic: 'optional - channel ID path e.g. '2/stat/#' (default: '2/e/LongFast/#')',
@@ -320,7 +327,7 @@ module Meshtastic
         )
 
         #{self}.send_text(
-          mqtt_obj: 'required - mqtt_obj returned from #connect method',
+          serial_obj: 'required - serial_obj returned from #connect method',
           from: 'required - From ID (String or Integer) (Default: \"!00000b0b\")',
           to: 'optional - Destination ID (Default: \"!ffffffff\")',
           topic: 'optional - topic to publish to (default: 'msh/US/2/e/LongFast/1')',
@@ -333,8 +340,8 @@ module Meshtastic
           psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: 'AQ==' })'
         )
 
-        mqtt_obj = #{self}.disconnect(
-          mqtt_obj: 'required - mqtt_obj object returned from #connect method'
+        serial_obj = #{self}.disconnect(
+          serial_obj: 'required - serial_obj object returned from #connect method'
         )
 
         #{self}.authors
