@@ -66,7 +66,7 @@ module Meshtastic
     #   psks: 'optional - hash of :channel_id => psk key value pairs (default: { LongFast: "AQ==" })',
     #   qos: 'optional - quality of service (default: 0)',
     #   exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)',
-    #   filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
+    #   include: 'optional - comma-delimited string(s) to include on in message (default: nil)',
     #   gps_metadata: 'optional - include GPS metadata in output (default: false)',
     #   include_raw: 'optional - include raw packet data in output (default: false)'
     # )
@@ -88,7 +88,7 @@ module Meshtastic
       qos = opts[:qos] ||= 0
       json = opts[:json] ||= false
       exclude = opts[:exclude]
-      filter = opts[:filter]
+      include = opts[:include]
       gps_metadata = opts[:gps_metadata] ||= false
       include_raw = opts[:include_raw] ||= false
 
@@ -100,7 +100,7 @@ module Meshtastic
 
       # MQTT::ProtocolException: No Ping Response received for 23 seconds (MQTT::ProtocolException)
 
-      filter_arr = filter.to_s.split(',').map(&:strip)
+      include_arr = include.to_s.split(',').map(&:strip)
       exclude_arr = exclude.to_s.split(',').map(&:strip)
       mqtt_obj.get_packet do |packet_bytes|
         raw_packet = packet_bytes.to_s if include_raw
@@ -204,16 +204,14 @@ module Meshtastic
 
           next
         ensure
-          exclude_arr = [message[:id].to_s] if exclude.nil?
-          filter_arr = [message[:id].to_s] if filter.nil?
+          include_arr = [message[:id].to_s] if include_arr.empty?
           if message.is_a?(Hash)
             flat_message = message.values.join(' ')
 
-            disp = true if filter_arr.first == message[:id] ||
-                           filter_arr.all? { |filter| flat_message.include?(filter) }
-
-            disp = false if exclude_arr.first == message[:id] ||
-                            exclude_arr.all? { |exclude| flat_message.include?(exclude) }
+            disp = true if exclude_arr.none? { |exclude| flat_message.include?(exclude) } && (
+                             include_arr.first == message[:id] ||
+                             include_arr.all? { |include| flat_message.include?(include) }
+                           )
 
             if disp
               if block_given?
@@ -312,7 +310,7 @@ module Meshtastic
           qos: 'optional - quality of service (default: 0)',
           json: 'optional - JSON output (default: false)',
           exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)',
-          filter: 'optional - comma-delimited string(s) to filter on in message (default: nil)',
+          include: 'optional - comma-delimited string(s) to include on in message (default: nil)',
           gps_metadata: 'optional - include GPS metadata in output (default: false)'
         )
 
