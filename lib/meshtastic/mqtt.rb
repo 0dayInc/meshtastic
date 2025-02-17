@@ -268,7 +268,7 @@ module Meshtastic
       opts[:via] = :mqtt
 
       # TODO: Implement chunked message to deal with large messages
-      mui = Meshtastic::Interface.new
+      mui = Meshtastic::MeshInterface.new
       protobuf_text = mui.send_text(opts)
 
       mqtt_obj.publish(topic, protobuf_text)

@@ -47,6 +47,7 @@ module Meshtastic
   autoload :RTTTL, 'meshtastic/rtttl'
   autoload :Serial, 'meshtastic/serial'
   autoload :Storeforward, 'meshtastic/storeforward'
+  autoload :StreamInterface, 'meshtastic/stream_interface'
   autoload :Telemetry, 'meshtastic/telemetry'
   autoload :Util, 'meshtastic/util'
   autoload :Xmodem, 'meshtastic/xmodem'
