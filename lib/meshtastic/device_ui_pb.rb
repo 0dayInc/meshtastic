@@ -20,6 +20,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :node_filter, :message, 12, "meshtastic.NodeFilter"
       optional :node_highlight, :message, 13, "meshtastic.NodeHighlight"
       optional :calibration_data, :bytes, 14
+      optional :map_data, :message, 15, "meshtastic.Map"
     end
     add_message "meshtastic.NodeFilter" do
       optional :unknown_switch, :bool, 1
@@ -36,6 +37,16 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :telemetry_switch, :bool, 3
       optional :iaq_switch, :bool, 4
       optional :node_name, :string, 5
+    end
+    add_message "meshtastic.GeoPoint" do
+      optional :zoom, :int32, 1
+      optional :latitude, :int32, 2
+      optional :longitude, :int32, 3
+    end
+    add_message "meshtastic.Map" do
+      optional :home, :message, 1, "meshtastic.GeoPoint"
+      optional :style, :string, 2
+      optional :follow_gps, :bool, 3
     end
     add_enum "meshtastic.Theme" do
       value :DARK, 0
@@ -59,6 +70,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :GREEK, 13
       value :NORWEGIAN, 14
       value :SLOVENIAN, 15
+      value :UKRAINIAN, 16
       value :SIMPLIFIED_CHINESE, 30
       value :TRADITIONAL_CHINESE, 31
     end
@@ -69,6 +81,8 @@ module Meshtastic
   DeviceUIConfig = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.DeviceUIConfig").msgclass
   NodeFilter = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.NodeFilter").msgclass
   NodeHighlight = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.NodeHighlight").msgclass
+  GeoPoint = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.GeoPoint").msgclass
+  Map = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Map").msgclass
   Theme = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Theme").enummodule
   Language = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.Language").enummodule
 end

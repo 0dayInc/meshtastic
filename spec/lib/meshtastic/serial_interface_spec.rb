@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::Serial do
+describe Meshtastic::SerialInterface do
 end

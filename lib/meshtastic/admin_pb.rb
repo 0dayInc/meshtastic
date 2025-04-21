@@ -37,6 +37,9 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
         optional :enter_dfu_mode_request, :bool, 21
         optional :delete_file_request, :string, 22
         optional :set_scale, :uint32, 23
+        optional :backup_preferences, :enum, 24, "meshtastic.AdminMessage.BackupLocation"
+        optional :restore_preferences, :enum, 25, "meshtastic.AdminMessage.BackupLocation"
+        optional :remove_backup_preferences, :enum, 26, "meshtastic.AdminMessage.BackupLocation"
         optional :set_owner, :message, 32, "meshtastic.User"
         optional :set_channel, :message, 33, "meshtastic.Channel"
         optional :set_config, :message, 34, "meshtastic.Config"
@@ -92,6 +95,10 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :DETECTIONSENSOR_CONFIG, 11
       value :PAXCOUNTER_CONFIG, 12
     end
+    add_enum "meshtastic.AdminMessage.BackupLocation" do
+      value :FLASH, 0
+      value :SD, 1
+    end
     add_message "meshtastic.HamParameters" do
       optional :call_sign, :string, 1
       optional :tx_power, :int32, 2
@@ -108,6 +115,7 @@ module Meshtastic
   AdminMessage = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.AdminMessage").msgclass
   AdminMessage::ConfigType = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.AdminMessage.ConfigType").enummodule
   AdminMessage::ModuleConfigType = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.AdminMessage.ModuleConfigType").enummodule
+  AdminMessage::BackupLocation = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.AdminMessage.BackupLocation").enummodule
   HamParameters = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.HamParameters").msgclass
   NodeRemoteHardwarePinsResponse = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.NodeRemoteHardwarePinsResponse").msgclass
 end
