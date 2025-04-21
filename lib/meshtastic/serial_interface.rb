@@ -10,46 +10,21 @@ require 'uart'
 
 # Plugin used to interact with Meshtastic nodes
 module Meshtastic
-  module Serial
+  module SerialInterface
     @console_data = []
     @proto_data = []
 
     # Supported Method Parameters::
-    # console_thread = init_console_thread(
-    #   serial_conn: 'required - SerialPort.new object'
+    # proto_thread = init_stdout_thread(
+    #   serial_conn: 'required - serial_conn object returned from UART.open method',
+    #   type: 'required - :proto or :console'
     # )
 
-    private_class_method def self.init_console_thread(opts = {})
+    private_class_method def self.init_stdout_thread(opts = {})
       serial_conn = opts[:serial_conn]
-
-      # Spin up a serial_obj console_thread
-      Thread.new do
-        # serial_conn.read_timeout = -1
-        serial_conn.flush
-
-        loop do
-          serial_conn.wait_readable
-          # Read raw chars into @console_data,
-          # convert to readable bytes if need-be
-          # later.
-          @console_data << serial_conn.readchar.force_encoding('UTF-8')
-        end
-      end
-    rescue StandardError => e
-      console_thread&.terminate
-      serial_conn&.close
-      serial_conn = nil
-
-      raise e
-    end
-
-    # Supported Method Parameters::
-    # proto_thread = init_proto_thread(
-    #   serial_conn: 'required - SerialPort.new object'
-    # )
-
-    private_class_method def self.init_proto_thread(opts = {})
-      serial_conn = opts[:serial_conn]
+      type = opts[:type]
+      valid_types = %i[proto console]
+      raise "ERROR: Invalid type: #{type}. Supported types are :proto or :console" unless valid_types.include?(type)
 
       # Spin up a serial_obj console_thread
       Thread.new do
@@ -62,27 +37,24 @@ module Meshtastic
           # Read raw chars into @console_data,
           # convert to readable bytes if need-be
           # later.
-          @proto_data << from_radio.to_h
+          @proto_data << from_radio.to_h if type == :proto
+          @console_data << serial_conn.readchar.force_encoding('UTF-8') if type == :console
         end
       end
     rescue StandardError => e
-      proto_thread&.terminate
-      serial_conn&.close
-      serial_conn = nil
-
       raise e
     end
 
     # Supported Method Parameters::
-    # Meshtastic::Serial.request(
+    # Meshtastic::SerialInterface.request(
     #   serial_obj: 'required serial_obj returned from #connect method',
-    #   payload: 'required - array of bytes OR string to write to serial device (e.g. [0x00, 0x41, 0x90, 0x00] OR "ATDT+15555555\r\n"'
+    #   payload: 'required - array of bytes OR string to write to serial device (e.g. [0x00, 0x41, 0x90, 0x00] OR "\x00\x41\c90\x00\r\n"'
     # )
 
     public_class_method def self.request(opts = {})
       serial_obj = opts[:serial_obj]
-      payload = opts[:payload]
       serial_conn = serial_obj[:serial_conn]
+      payload = opts[:payload]
 
       byte_arr = nil
       byte_arr = payload if payload.instance_of?(Array)
@@ -101,7 +73,7 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
-    # serial_obj = Meshtastic::Serial.connect(
+    # serial_obj = Meshtastic::SerialInterface.connect(
     #   block_dev: 'optional - serial block device path (defaults to /dev/ttyUSB0)',
     #   baud: 'optional - (defaults to 115200)',
     #   data_bits: 'optional - (defaults to 8)',
@@ -138,16 +110,16 @@ module Meshtastic
 
       serial_obj = {}
       serial_obj[:serial_conn] = serial_conn
-      serial_obj[:console_thread] = init_console_thread(
-        serial_conn: serial_conn
+      serial_obj[:console_thread] = init_stdout_thread(
+        serial_conn: serial_conn,
+        type: :console
       )
-      serial_obj[:proto_thread] = init_proto_thread(
-        serial_conn: serial_conn
+      serial_obj[:proto_thread] = init_stdout_thread(
+        serial_conn: serial_conn,
+        type: :proto
       )
 
-      # 32 bytes of start2_byte in a byte array
-      start2_byte_arr = [START2].pack('C') * 32
-      request(serial_obj: serial_obj, payload: start2_byte_arr)
+      wake_up_device(serial_obj: serial_obj)
 
       mui = Meshtastic::MeshInterface.new
       mui.start_config
@@ -157,58 +129,73 @@ module Meshtastic
       disconnect(serial_obj: serial_obj) unless serial_obj.nil?
       raise e
     end
+    #
+    # Supported Method Parameters::
+    # wake_up_device(
+    #   serial_obj: 'required - serial_obj returned from #connect method'
+    # )
+    public_class_method def self.wake_up_device(opts = {})
+      serial_obj = opts[:serial_obj]
+
+      start2_byte_arr = [START2].pack('C') * 32
+      request(serial_obj: serial_obj, payload: start2_byte_arr)
+    rescue StandardError => e
+      disconnect(serial_obj: serial_obj) unless serial_obj.nil?
+      raise e
+    end
 
     # Supported Method Parameters::
-    # console_data = Meshtastic::Serial.dump_console_data
+    # stdout_data = Meshtastic::SerialInterface.dump_stdout_data(
+    #   type: 'required - :proto or :console'
+    # )
 
-    public_class_method def self.dump_console_data
+    public_class_method def self.dump_stdout_data(opts = {})
+      type = opts[:type]
+      valid_types = %i[proto console]
+      raise "ERROR: Invalid type: #{type}. Supported types are :proto or :console" unless valid_types.include?(type)
+
       if block_given?
-        @console_data.join.split("\n").each { |data| yield data }
+        @proto_data.each { |proto_hash| yield proto_hash } if type == :proto
+        @console_data.join.split("\n").each{ |line| yield line.force_encoding('UTF-8') } if type == :console
       else
-        @console_data.join
+        stdout_data = @proto_data if type == :proto
+        stdout_data = @console_data.join if type == :console
+
+        stdout_data
       end
     rescue StandardError => e
       raise e
     end
 
     # Supported Method Parameters::
-    # console_data = Meshtastic::Serial.dump_proto_data
-
-    public_class_method def self.dump_proto_data
-      if block_given?
-        @proto_data.each { |proto_hash| yield proto_hash }
-      else
-        @proto_data
-      end
-    rescue StandardError => e
-      raise e
-    end
-
-    # Supported Method Parameters::
-    # console_data = Meshtastic::Serial.flush_data(opts = {})
+    # console_data = Meshtastic::SerialInterface.flush_data(opts = {})
 
     public_class_method def self.flush_data(opts = {})
-      target = opts[:target]
-      case target
-      when :console
-        @console_data.clear
-      when :proto
-        @proto_data.clear
-      else
-        raise "ERROR: supported targets are :console or :proto"
-      end
+      type = opts[:type]
+      valid_types = %i[proto console]
+      raise "ERROR: Invalid type: #{type}. Supported types are :proto or :console" unless valid_types.include?(type)
+
+      @console_data.clear if type == :console
+      @proto_data.clear if type == :proto
     rescue StandardError => e
       raise e
     end
 
     # Supported Method Parameters::
-    # console_data = Meshtastic::Serial.monitor_console(
+    # console_data = Meshtastic::SerialInterface.monitor_stdout(
+    #   serial_obj: 'required - serial_obj returned from #connect method',
+    #   type: 'required - :proto or :console',
     #   refresh: 'optional - refresh interval (default: 3)',
     #   include: 'optional - comma-delimited string(s) to include in message (default: nil)',
     #   exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)'
     # )
 
-    public_class_method def self.monitor_console(opts = {})
+    public_class_method def self.monitor_stdout(opts = {})
+      serial_obj = opts[:serial_obj]
+      type = opts[:type]
+      valid_types = %i[proto console]
+      raise "ERROR: Invalid type: #{type}. Supported types are :proto or :console" unless valid_types.include?(type)
+
       refresh = opts[:refresh] ||= 3
       include = opts[:include]
       exclude = opts[:exclude]
@@ -217,58 +204,27 @@ module Meshtastic
         exclude_arr = exclude.to_s.split(',').map(&:strip)
         include_arr = include.to_s.split(',').map(&:strip)
 
-        dump_console_data do |data|
+        dump_stdout_data(type: type) do |data|
           disp = false
           disp = true if exclude_arr.none? { |exclude| data.include?(exclude) } && (
                            include_arr.empty? ||
                            include_arr.all? { |include| data.include?(include) }
                          )
           puts data if disp
-          flush_data(target: :console)
+          flush_data(type: type)
         end
         sleep refresh
       end
     rescue Interrupt
       puts "\nCTRL+C detected. Breaking out of console mode..."
+      disconnect(serial_obj: serial_obj) unless serial_obj.nil?
     rescue StandardError => e
+      disconnect(serial_obj: serial_obj) unless serial_obj.nil?
       raise e
     end
 
     # Supported Method Parameters::
-    # console_data = Meshtastic::Serial.monitor_proto(
-    #   refresh: 'optional - refresh interval (default: 3)',
-    #   include: 'optional - comma-delimited string(s) to include in message (default: nil)',
-    #   exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)'
-    # )
-
-    public_class_method def self.monitor_proto(opts = {})
-      refresh = opts[:refresh] ||= 3
-      include = opts[:include]
-      exclude = opts[:exclude]
-
-      loop do
-        exclude_arr = exclude.to_s.split(',').map(&:strip)
-        include_arr = include.to_s.split(',').map(&:strip)
-
-        dump_proto_data do |data|
-          disp = false
-          disp = true if exclude_arr.none? { |exclude| data.include?(exclude) } && (
-                           include_arr.empty? ||
-                           include_arr.all? { |include| data.include?(include) }
-                         )
-          puts data if disp
-          flush_data(target: :proto)
-        end
-        sleep refresh
-      end
-    rescue Interrupt
-      puts "\nCTRL+C detected. Breaking out of proto mode..."
-    rescue StandardError => e
-      raise e
-    end
-
-    # Supported Method Parameters::
-    # Meshtastic::Serial.subscribe(
+    # Meshtastic::SerialInterface.subscribe(
     #   serial_obj: 'required - serial_obj returned from #connect method'
     #   root_topic: 'optional - root topic (default: msh)',
     #   region: 'optional - region e.g. 'US/VA', etc (default: US)',
@@ -451,14 +407,14 @@ module Meshtastic
       end
     rescue Interrupt
       puts "\nCTRL+C detected. Exiting..."
+      serial_obj = disconnect(serial_obj: serial_obj) unless serial_obj.nil?
     rescue StandardError => e
+      serial_obj = disconnect(serial_obj: serial_obj) unless serial_obj.nil?
       raise e
-    ensure
-      serial_obj.disconnect if serial_obj
     end
 
     # Supported Method Parameters::
-    # Meshtastic::Serial.send_text(
+    # Meshtastic::SerialInterface.send_text(
     #   serial_obj: 'required - serial_obj returned from #connect method',
     #   from: 'required - From ID (String or Integer) (Default: "!00000b0b")',
     #   to: 'optional - Destination ID (Default: "!ffffffff")',
@@ -472,17 +428,18 @@ module Meshtastic
     #   psks: 'optional - hash of :channel_id => psk key value pairs (default: { LongFast: "AQ==" })'
     # )
     public_class_method def self.send_text(opts = {})
-      serial_obj = opts[:serial_obj]
-      topic = opts[:topic] ||= 'msh/US/2/e/LongFast/#'
+      # serial_obj = opts[:serial_obj]
+      # topic = opts[:topic] ||= 'msh/US/2/e/LongFast/#'
       opts[:via] = :radio
 
       # TODO: Implement chunked message to deal with large messages
       mui = Meshtastic::MeshInterface.new
-      protobuf_text = mui.send_text(opts)
+      mui.send_text(opts)
 
       # TODO: serial equivalent of publish
       # serial_obj.publish(topic, protobuf_text)
     rescue StandardError => e
+      serial_obj = disconnect(serial_obj: serial_obj) unless serial_obj.nil?
       raise e
     end
 
@@ -493,7 +450,16 @@ module Meshtastic
     public_class_method def self.disconnect(opts = {})
       serial_obj = opts[:serial_obj]
 
-      serial_obj.disconnect if serial_obj
+      if serial_obj
+        console_thread = serial_obj[:console_thread]
+        proto_thread = serial_obj[:proto_thread]
+        serial_conn = serial_obj[:serial_conn]
+
+        console_thread&.terminate
+        proto_thread&.terminate
+        serial_conn&.close
+      end
+
       nil
     rescue StandardError => e
       raise e
@@ -522,16 +488,28 @@ module Meshtastic
           ack_timeout: 'optional - acknowledgement timeout (default: 30)'
         )
 
-        #{self}.monitor_console(
-          refresh: 'optional - refresh interval (default: 3)',
-          include: 'optional - comma-delimited string(s) to include in message (default: nil)',
-          exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)'
+        #{self}.wake_up_device(
+          serial_obj: 'required - serial_obj returned from #connect method'
         )
 
-        #{self}.monitor_proto(
+        #{self}.request(
+          serial_obj: 'required serial_obj returned from #connect method',
+          payload: 'required - array of bytes OR string to write to serial device (e.g. [0x00, 0x41, 0x90, 0x00] OR \"\\x00\\x41\\c90\\x00\\r\\n\"'
+        )
+
+        stdout_data = #{self}.dump_stdout_data(
+          type: 'required - :proto or :console'
+        )
+
+        #{self}.flush_data(
+          type: 'optional - :console or :proto (default: nil)'
+        )
+
+        #{self}.monitor_stdout(
+          type: 'required - :proto or :console',
           refresh: 'optional - refresh interval (default: 3)',
           include: 'optional - comma-delimited string(s) to include in message (default: nil)',
-          exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)'
+          exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)',
         )
 
         #{self}.subscribe(

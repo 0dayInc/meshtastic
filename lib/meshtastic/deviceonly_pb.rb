@@ -7,6 +7,7 @@ require 'meshtastic/channel_pb'
 require 'meshtastic/mesh_pb'
 require 'meshtastic/telemetry_pb'
 require 'meshtastic/config_pb'
+require 'meshtastic/localonly_pb'
 require 'nanopb_pb'
 
 Google::Protobuf::DescriptorPool.generated_pool.build do
@@ -51,11 +52,22 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       optional :did_gps_reset, :bool, 11
       optional :rx_waypoint, :message, 12, "meshtastic.MeshPacket"
       repeated :node_remote_hardware_pins, :message, 13, "meshtastic.NodeRemoteHardwarePin"
-      repeated :node_db_lite, :message, 14, "meshtastic.NodeInfoLite"
+    end
+    add_message "meshtastic.NodeDatabase" do
+      optional :version, :uint32, 1
+      repeated :nodes, :message, 2, "meshtastic.NodeInfoLite"
     end
     add_message "meshtastic.ChannelFile" do
       repeated :channels, :message, 1, "meshtastic.Channel"
       optional :version, :uint32, 2
+    end
+    add_message "meshtastic.BackupPreferences" do
+      optional :version, :uint32, 1
+      optional :timestamp, :fixed32, 2
+      optional :config, :message, 3, "meshtastic.LocalConfig"
+      optional :module_config, :message, 4, "meshtastic.LocalModuleConfig"
+      optional :channels, :message, 5, "meshtastic.ChannelFile"
+      optional :owner, :message, 6, "meshtastic.User"
     end
   end
 end
@@ -65,5 +77,7 @@ module Meshtastic
   UserLite = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.UserLite").msgclass
   NodeInfoLite = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.NodeInfoLite").msgclass
   DeviceState = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.DeviceState").msgclass
+  NodeDatabase = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.NodeDatabase").msgclass
   ChannelFile = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.ChannelFile").msgclass
+  BackupPreferences = ::Google::Protobuf::DescriptorPool.generated_pool.lookup("meshtastic.BackupPreferences").msgclass
 end

@@ -156,6 +156,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :OLED_SSD1306, 1
       value :OLED_SH1106, 2
       value :OLED_SH1107, 3
+      value :OLED_SH1107_128_64, 4
     end
     add_enum "meshtastic.Config.DisplayConfig.DisplayMode" do
       value :DEFAULT, 0

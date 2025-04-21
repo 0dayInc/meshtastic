@@ -32,6 +32,7 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :ATAK_PLUGIN, 72
       value :MAP_REPORT_APP, 73
       value :POWERSTRESS_APP, 74
+      value :RETICULUM_TUNNEL_APP, 76
       value :PRIVATE_APP, 256
       value :ATAK_FORWARDER, 257
       value :MAX, 511

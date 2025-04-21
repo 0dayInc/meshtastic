@@ -386,6 +386,16 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :ROUTASTIC, 85
       value :MESH_TAB, 86
       value :MESHLINK, 87
+      value :XIAO_NRF52_KIT, 88
+      value :THINKNODE_M1, 89
+      value :THINKNODE_M2, 90
+      value :T_ETH_ELITE, 91
+      value :HELTEC_SENSOR_HUB, 92
+      value :RESERVED_FRIED_CHICKEN, 93
+      value :HELTEC_MESH_POCKET, 94
+      value :SEEED_SOLAR_NODE, 95
+      value :NOMADSTAR_METEOR_PRO, 96
+      value :CROWPANEL, 97
       value :PRIVATE_HW, 255
     end
     add_enum "meshtastic.Constants" do
@@ -423,6 +433,8 @@ Google::Protobuf::DescriptorPool.generated_pool.build do
       value :AMBIENTLIGHTING_CONFIG, 1024
       value :DETECTIONSENSOR_CONFIG, 2048
       value :PAXCOUNTER_CONFIG, 4096
+      value :BLUETOOTH_CONFIG, 8192
+      value :NETWORK_CONFIG, 16384
     end
   end
 end

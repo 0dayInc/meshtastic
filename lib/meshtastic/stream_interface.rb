@@ -58,7 +58,7 @@ module Meshtastic
       sleep(0.1) # wait 100ms to give device time to start running
 
       @rx_thread.start
-      mui = Meshtastic::MeshInfoUser.new
+      mui = Meshtastic::MeshInterface.new
       mui.start_config
     rescue StandardError => e
       raise e
@@ -67,8 +67,48 @@ module Meshtastic
     # Supported Method Parameters::
     # Meshtastic::StreamInterface.reader
     def reader
+      loop do
+        break if @want_exit
+        # Read from stream and handle data
+        # This should be implemented based on how you handle reading from @stream
+        data = @stream.read(1) # Example: read one byte at a time
+        @rx_buf << data if data
+
+        # Here you would parse the data according to your protocol
+        # This is just a placeholder for the actual reading logic
+
+        # Yield for other threads
+        sleep(0.01)
+      end
     rescue StandardError => e
       raise e
+    end
+
+    def write_bytes(opts = {})
+      bytes = opts[:bytes]
+      @stream.write(bytes) if @stream
+      @stream.flush if @stream
+    end
+
+    def read_bytes(opts = {})
+      length = opts[:length]
+      @stream.read(length) if @stream
+    end
+
+    def send_to_radio_impl(opts = {})
+      to_radio = opts[:to_radio]
+      # Convert to_radio to bytes, assuming it's a proto message in Ruby
+      # This example assumes `to_radio` has a method to serialize to string
+      b = to_radio.to_s
+      buf_len = b.length
+      header = [0x94, 0xC3, (buf_len >> 8) & 0xFF, buf_len & 0xFF].pack('C*')
+      write_bytes(header + b)
+    end
+
+    def close
+      @want_exit = true
+      @rx_thread.join if @rx_thread && @rx_thread != Thread.current
+      @stream&.close
     end
 
     # Author(s):: 0day Inc. <support@0dayinc.com>
