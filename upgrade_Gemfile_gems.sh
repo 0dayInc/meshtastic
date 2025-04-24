@@ -8,9 +8,9 @@ cat Gemfile | awk '{print $2}' | grep -E "^'.+$" | grep -v -e rubygems.org | whi
     case $this_gem in
       'bundler'|'rubocop'|'rubocop-rake'|'rubocop-rspec')
 	sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '>=${latest_version}'/g" Gemfile;;
-      'google-protobuf')
-        same_version=`protoc --version | awk '{ print $NF}'`
-	sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '${same_version}'/g" Gemfile;;
+      # 'google-protobuf')
+      #   same_version=`protoc --version | awk '{ print $NF}'`
+      #   sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '${same_version}'/g" Gemfile;;
       *)
 	sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '${latest_version}'/g" Gemfile;;
     esac
