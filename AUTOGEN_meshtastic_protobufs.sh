@@ -21,7 +21,7 @@ else
 fi
 
 cd $mesh_protobufs_root
-sudo protoc --proto_path=. --ruby_out=$mesh_protobufs_out nanopb.proto ./meshtastic/*.proto
+rvmsudo grpc_tools_ruby_protoc --proto_path=. --ruby_out=$mesh_protobufs_out nanopb.proto ./meshtastic/*.proto
 
 if (( $? == 0 )); then
   echo "Updated meshtastic protobufs reside in ${mesh_protobufs_out}"
