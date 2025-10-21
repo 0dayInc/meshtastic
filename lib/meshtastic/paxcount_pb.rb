@@ -5,9 +5,9 @@
 require 'google/protobuf'
 
 
-descriptor_data = "\n\x19meshtastic/paxcount.proto\x12\nmeshtastic\"5\n\x08Paxcount\x12\x0c\n\x04wifi\x18\x01 \x01(\r\x12\x0b\n\x03\x62le\x18\x02 \x01(\r\x12\x0e\n\x06uptime\x18\x03 \x01(\rBc\n\x13\x63om.geeksville.meshB\x0ePaxcountProtosZ\"github.com/meshtastic/go/generated\xaa\x02\x14Meshtastic.Protobufs\xba\x02\x00\x62\x06proto3"
+descriptor_data = "\n\x19meshtastic/paxcount.proto\x12\nmeshtastic\"5\n\x08Paxcount\x12\x0c\n\x04wifi\x18\x01 \x01(\r\x12\x0b\n\x03\x62le\x18\x02 \x01(\r\x12\x0e\n\x06uptime\x18\x03 \x01(\rBd\n\x14org.meshtastic.protoB\x0ePaxcountProtosZ\"github.com/meshtastic/go/generated\xaa\x02\x14Meshtastic.Protobufs\xba\x02\x00\x62\x06proto3"
 
-pool = Google::Protobuf::DescriptorPool.generated_pool
+pool = ::Google::Protobuf::DescriptorPool.generated_pool
 pool.add_serialized_file(descriptor_data)
 
 module Meshtastic

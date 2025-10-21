@@ -8,9 +8,9 @@ require 'meshtastic/channel_pb'
 require 'meshtastic/config_pb'
 
 
-descriptor_data = "\n\x18meshtastic/apponly.proto\x12\nmeshtastic\x1a\x18meshtastic/channel.proto\x1a\x17meshtastic/config.proto\"o\n\nChannelSet\x12-\n\x08settings\x18\x01 \x03(\x0b\x32\x1b.meshtastic.ChannelSettings\x12\x32\n\x0blora_config\x18\x02 \x01(\x0b\x32\x1d.meshtastic.Config.LoRaConfigBb\n\x13\x63om.geeksville.meshB\rAppOnlyProtosZ\"github.com/meshtastic/go/generated\xaa\x02\x14Meshtastic.Protobufs\xba\x02\x00\x62\x06proto3"
+descriptor_data = "\n\x18meshtastic/apponly.proto\x12\nmeshtastic\x1a\x18meshtastic/channel.proto\x1a\x17meshtastic/config.proto\"o\n\nChannelSet\x12-\n\x08settings\x18\x01 \x03(\x0b\x32\x1b.meshtastic.ChannelSettings\x12\x32\n\x0blora_config\x18\x02 \x01(\x0b\x32\x1d.meshtastic.Config.LoRaConfigBc\n\x14org.meshtastic.protoB\rAppOnlyProtosZ\"github.com/meshtastic/go/generated\xaa\x02\x14Meshtastic.Protobufs\xba\x02\x00\x62\x06proto3"
 
-pool = Google::Protobuf::DescriptorPool.generated_pool
+pool = ::Google::Protobuf::DescriptorPool.generated_pool
 pool.add_serialized_file(descriptor_data)
 
 module Meshtastic
