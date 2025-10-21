@@ -61,7 +61,7 @@ module Meshtastic
     #   mqtt_obj: 'required - mqtt_obj returned from #connect method'
     #   root_topic: 'optional - root topic (default: msh)',
     #   region: 'optional - region e.g. 'US/VA', etc (default: US)',
-    #   channel_topic: 'optional - channel ID path e.g. "2/stat/#" (default: "2/e/LongFast/#")',
+    #   topic: 'optional - channel ID path e.g. "2/stat/#" (default: "2/e/LongFast/#")',
     #   psks: 'optional - hash of :channel_id => psk key value pairs (default: { LongFast: "AQ==" })',
     #   qos: 'optional - quality of service (default: 0)',
     #   exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)',
@@ -74,7 +74,7 @@ module Meshtastic
       mqtt_obj = opts[:mqtt_obj]
       root_topic = opts[:root_topic] ||= 'msh'
       region = opts[:region] ||= 'US'
-      channel_topic = opts[:channel_topic] ||= '2/e/LongFast/#'
+      topic = opts[:topic] ||= '2/e/LongFast/#'
       # TODO: Support Array of PSKs and attempt each until decrypted
 
       public_psk = '1PG7OiApB1nwvP+rz05pAQ=='
@@ -93,7 +93,7 @@ module Meshtastic
       include_raw = opts[:include_raw] ||= false
 
       # NOTE: Use MQTT Explorer for topic discovery
-      full_topic = "#{root_topic}/#{region}/#{channel_topic}"
+      full_topic = "#{root_topic}/#{region}/#{topic}"
       full_topic = "#{root_topic}/#{region}" if region == '#'
       puts "Subscribing to: #{full_topic}"
       mqtt_obj.subscribe(full_topic, qos)
@@ -316,7 +316,7 @@ module Meshtastic
           mqtt_obj: 'required - mqtt_obj object returned from #connect method',
           root_topic: 'optional - root topic (default: msh)',
           region: 'optional - region e.g. 'US/VA', etc (default: US)',
-          channel_topic: 'optional - channel ID path e.g. '2/stat/#' (default: '2/e/LongFast/#')',
+          topic: 'optional - channel ID path e.g. '2/stat/#' (default: '2/e/LongFast/#')',
           psks: 'optional - hash of :channel_id => psk key value pairs (default: { LongFast: 'AQ==' })',
           qos: 'optional - quality of service (default: 0)',
           json: 'optional - JSON output (default: false)',
