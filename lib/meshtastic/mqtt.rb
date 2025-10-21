@@ -104,7 +104,7 @@ module Meshtastic
       exclude_arr = exclude.to_s.split(',').map(&:strip)
       mqtt_obj.get_packet do |packet_bytes|
         raw_packet = packet_bytes.to_s if include_raw
-        raw_topic = packet_bytes.topic ||= ''
+        raw_topic = packet_bytes.channel_topic ||= ''
         raw_payload = packet_bytes.payload ||= ''
 
         begin
