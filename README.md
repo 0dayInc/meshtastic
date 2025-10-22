@@ -44,7 +44,7 @@ mqtt_obj = Meshastic::MQTT.connect
 Meshtastic::MQTT.subscribe(
   mqtt_obj: mqtt_obj,
   region: 'US',
-  channel_topic: '2/e/LongFast/#',
+  topic: '2/e/LongFast/#',
   psks: { LongFast: 'AQ==' }
 ) do |message|
   puts message.inspect
@@ -76,7 +76,7 @@ mqtt_obj = Meshastic::MQTT.connect
 Meshtastic::MQTT.subscribe(
   mqtt_obj: mqtt_obj,
   region: 'US',
-  channel_topic: '2/e/LongFast/#',
+  topic: '2/e/LongFast/#',
   psks: { LongFast: 'AQ==' },
   include: '!YOUR_CLIENT_ID'
 ) do |message|
