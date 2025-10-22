@@ -253,7 +253,9 @@ module Meshtastic
     #   mqtt_obj: 'required - mqtt_obj returned from #connect method',
     #   from: 'required - From ID (String or Integer) (Default: "!00000b0b")',
     #   to: 'optional - Destination ID (Default: "!ffffffff")',
-    #   topic: 'optional - topic to publish to (Default: "msh/US/2/e/LongFast/1")',
+    #   root_topic: 'optional - root topic (default: msh)',
+    #   region: 'optional - region e.g. "US/VA", etc (default: US)',
+    #   topic: 'optional - topic to publish to (default: "2/e/LongFast")',
     #   channel: 'optional - channel (Default: 6)',
     #   text: 'optional - Text Message (Default: SYN)',
     #   want_ack: 'optional - Want Acknowledgement (Default: false)',
@@ -264,14 +266,20 @@ module Meshtastic
     # )
     public_class_method def self.send_text(opts = {})
       mqtt_obj = opts[:mqtt_obj]
-      topic = opts[:topic] ||= 'msh/US/2/e/LongFast/#'
+      opts[:from] ||= mqtt_obj.client_id
+      opts[:to] ||= '!ffffffff'
+      opts[:root_topic] ||= 'msh'
+      opts[:region] ||= 'US'
+      opts[:topic] ||= '2/e/LongFast'
+      opts[:channel] ||= 6
+      absolute_topic = "#{opts[:root_topic]}/#{opts[:region]}/#{opts[:topic]}/#{opts[:from]}"
       opts[:via] = :mqtt
 
       # TODO: Implement chunked message to deal with large messages
       mui = Meshtastic::MeshInterface.new
       protobuf_text = mui.send_text(opts)
 
-      mqtt_obj.publish(topic, protobuf_text)
+      mqtt_obj.publish(absolute_topic, protobuf_text)
     rescue StandardError => e
       raise e
     end
@@ -329,7 +337,9 @@ module Meshtastic
           mqtt_obj: 'required - mqtt_obj returned from #connect method',
           from: 'required - From ID (String or Integer) (Default: \"!00000b0b\")',
           to: 'optional - Destination ID (Default: \"!ffffffff\")',
-          topic: 'optional - topic to publish to (default: 'msh/US/2/e/LongFast/1')',
+          root_topic: 'optional - root topic (default: msh)',
+          region: 'optional - region e.g. 'US/VA', etc (default: US)',
+          topic: 'optional - topic to publish to (default: '2/e/LongFast')',
           channel: 'optional - channel (Default: 6)',
           text: 'optional - Text Message (Default: SYN)',
           want_ack: 'optional - Want Acknowledgement (Default: false)',
