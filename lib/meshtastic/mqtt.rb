@@ -255,7 +255,7 @@ module Meshtastic
     #   to: 'optional - Destination ID (Default: "!ffffffff")',
     #   root_topic: 'optional - root topic (default: msh)',
     #   region: 'optional - region e.g. "US/VA", etc (default: US)',
-    #   topic: 'optional - topic to publish to (default: "2/e/LongFast")',
+    #   topic: 'optional - topic to publish to (default: "2/e/LongFast/#")',
     #   channel: 'optional - channel (Default: 6)',
     #   text: 'optional - Text Message (Default: SYN)',
     #   want_ack: 'optional - Want Acknowledgement (Default: false)',
@@ -270,9 +270,11 @@ module Meshtastic
       opts[:to] ||= '!ffffffff'
       opts[:root_topic] ||= 'msh'
       opts[:region] ||= 'US'
-      opts[:topic] ||= '2/e/LongFast'
+      opts[:topic] ||= '2/e/LongFast/#'
+      opts[:topic] = opts[:topic].to_s.gsub('/#', '')
       opts[:channel] ||= 6
       absolute_topic = "#{opts[:root_topic]}/#{opts[:region]}/#{opts[:topic]}/#{opts[:from]}"
+      opts[:topic] = absolute_topic
       opts[:via] = :mqtt
 
       # TODO: Implement chunked message to deal with large messages
@@ -339,7 +341,7 @@ module Meshtastic
           to: 'optional - Destination ID (Default: \"!ffffffff\")',
           root_topic: 'optional - root topic (default: msh)',
           region: 'optional - region e.g. 'US/VA', etc (default: US)',
-          topic: 'optional - topic to publish to (default: '2/e/LongFast')',
+          topic: 'optional - topic to publish to (default: '2/e/LongFast/#')',
           channel: 'optional - channel (Default: 6)',
           text: 'optional - Text Message (Default: SYN)',
           want_ack: 'optional - Want Acknowledgement (Default: false)',

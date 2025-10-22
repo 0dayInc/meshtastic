@@ -30,6 +30,7 @@ At the moment the only module available is `Meshtastic::MQTT`.  To view MQTT mes
 require 'meshtastic'
 Meshtastic::MQTT.help
 mqtt_obj = Meshastic::MQTT.connect
+puts mqtt_obj.inspect
 Meshtastic::MQTT.subscribe(
   mqtt_obj: mqtt_obj,
   include: '_APP, LongFast'
@@ -43,6 +44,7 @@ require 'meshtastic'
 mqtt_obj = Meshastic::MQTT.connect
 Meshtastic::MQTT.subscribe(
   mqtt_obj: mqtt_obj,
+  root_topic: 'msh',
   region: 'US',
   topic: '2/e/LongFast/#',
   psks: { LongFast: 'AQ==' }
@@ -61,7 +63,9 @@ Meshtastic::MQTT.send_text(
   mqtt_obj: mqtt_obj,
   from: client_id,
   to: '!ffffffff',
-  topic: "msh/US/2/e/LongFast/#{client_id}",
+  root_topic: 'msh',
+  region: 'US',
+  topic: '2/e/LongFast/#',
   channel: 93,
   text: 'Hello, World!',
   psks: { LongFast: 'AQ==' }
@@ -75,6 +79,7 @@ require 'meshtastic'
 mqtt_obj = Meshastic::MQTT.connect
 Meshtastic::MQTT.subscribe(
   mqtt_obj: mqtt_obj,
+  root_topic: 'msh',
   region: 'US',
   topic: '2/e/LongFast/#',
   psks: { LongFast: 'AQ==' },
