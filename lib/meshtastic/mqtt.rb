@@ -264,7 +264,9 @@ module Meshtastic
     # )
     public_class_method def self.send_text(opts = {})
       mqtt_obj = opts[:mqtt_obj]
+      from = opts[:from]
       topic = opts[:topic] ||= 'msh/US/2/e/LongFast/#'
+      topic = "#{topic}/#{from}"
       opts[:via] = :mqtt
 
       # TODO: Implement chunked message to deal with large messages
