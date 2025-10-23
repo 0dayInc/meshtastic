@@ -279,7 +279,7 @@ module Meshtastic
 
       # TODO: Implement chunked message to deal with large messages
       raw_text = opts[:text].to_s
-      max_bytes = 233
+      max_bytes = 232
       mui = Meshtastic::MeshInterface.new
 
       if raw_text.bytesize > max_bytes
