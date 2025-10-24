@@ -278,29 +278,22 @@ module Meshtastic
       opts[:via] = :mqtt
 
       # TODO: Implement chunked message to deal with large messages
-      raw_text = opts[:text].to_s
-      max_bytes = 232
+      text = opts[:text].to_s
+      max_bytes = 233
       mui = Meshtastic::MeshInterface.new
 
-      if raw_text.bytesize > max_bytes
-        chunks = []
-        current_chunk = ''
-        raw_text.each_char do |char|
-          if (current_chunk + char).bytesize > max_bytes
-            chunks.push(current_chunk)
-            current_chunk = char
-          else
-            current_chunk += char
-          end
-        end
-        chunks.push(current_chunk) unless current_chunk.empty?
-
-        total_chunks = chunks.length
-        chunks.each_with_index do |chunk, index|
+      if text.bytesize > max_bytes
+        total_chunks = (text.bytesize.to_f / max_bytes).ceil
+        total_chunks.times do |i|
+          chunk_num = i + 1
+          chunk_prefix = "(#{chunk_num} of #{total_chunks})"
+          chunk_prefix_len = chunk_prefix.bytesize
+          start_index = i * (max_bytes - chunk_prefix_len)
+          end_index = (start_index + (max_bytes - chunk_prefix_len)) - 1
+          chunk = "#{chunk_prefix} #{text.byteslice(start_index..end_index)}"
           opts[:text] = chunk
-          opts[:text] = "[#{index + 1}/#{total_chunks}] #{chunk}"
           protobuf_chunk = mui.send_text(opts)
-          push(mqtt_obj.publish(absolute_topic, protobuf_chunk))
+          mqtt_obj.publish(absolute_topic, protobuf_chunk)
         end
       else
         protobuf_text = mui.send_text(opts)
