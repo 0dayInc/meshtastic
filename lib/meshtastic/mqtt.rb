@@ -291,11 +291,15 @@ module Meshtastic
           start_index = i * (max_bytes - chunk_prefix_len)
           end_index = (start_index + (max_bytes - chunk_prefix_len)) - 1
           chunk = "#{chunk_prefix} #{text.byteslice(start_index..end_index)}"
-          opts[:text] = chunk
+          # This addresses a weird bug in the protocal if the first byte
+          # is an h or H followed by a single byte, which returns
+          # {} or {bitfiled: INT}
+          opts[:text] = " #{chunk}"
           protobuf_chunk = mui.send_text(opts)
           mqtt_obj.publish(absolute_topic, protobuf_chunk)
         end
       else
+        opts[:text] = " #{text}"
         protobuf_text = mui.send_text(opts)
         mqtt_obj.publish(absolute_topic, protobuf_text)
       end
