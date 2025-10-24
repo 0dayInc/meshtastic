@@ -95,7 +95,6 @@ module Meshtastic
       # NOTE: Use MQTT Explorer for topic discovery
       full_topic = "#{root_topic}/#{region}/#{topic}"
       full_topic = "#{root_topic}/#{region}" if region == '#'
-      puts "Subscribing to: #{full_topic}"
       mqtt_obj.subscribe(full_topic, qos)
 
       # MQTT::ProtocolException: No Ping Response received for 23 seconds (MQTT::ProtocolException)
@@ -286,7 +285,7 @@ module Meshtastic
         total_chunks = (text.bytesize.to_f / max_bytes).ceil
         total_chunks.times do |i|
           chunk_num = i + 1
-          chunk_prefix = " (#{chunk_num} of #{total_chunks})"
+          chunk_prefix = " (#{chunk_num} of #{total_chunks})\n"
           chunk_prefix_len = chunk_prefix.bytesize
           start_index = i * (max_bytes - chunk_prefix_len)
           end_index = (start_index + (max_bytes - chunk_prefix_len)) - 1
@@ -297,6 +296,7 @@ module Meshtastic
           opts[:text] = chunk
           protobuf_chunk = mui.send_text(opts)
           mqtt_obj.publish(absolute_topic, protobuf_chunk)
+          sleep 0.3
         end
       else
         opts[:text] = " #{text}"
