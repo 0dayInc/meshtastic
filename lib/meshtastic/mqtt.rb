@@ -285,7 +285,7 @@ module Meshtastic
         total_chunks = (text.bytesize.to_f / max_bytes).ceil
         total_chunks.times do |i|
           chunk_num = i + 1
-          chunk_prefix = " (#{chunk_num} of #{total_chunks})"
+          chunk_prefix = " (#{chunk_num} of #{total_chunks})\n"
           chunk_prefix_len = chunk_prefix.bytesize
           start_index = i * (max_bytes - chunk_prefix_len)
           end_index = (start_index + (max_bytes - chunk_prefix_len)) - 1
