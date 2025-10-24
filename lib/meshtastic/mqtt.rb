@@ -297,6 +297,7 @@ module Meshtastic
           opts[:text] = chunk
           protobuf_chunk = mui.send_text(opts)
           mqtt_obj.publish(absolute_topic, protobuf_chunk)
+          sleep 0.3
         end
       else
         opts[:text] = " #{text}"
