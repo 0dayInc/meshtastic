@@ -95,7 +95,6 @@ module Meshtastic
       # NOTE: Use MQTT Explorer for topic discovery
       full_topic = "#{root_topic}/#{region}/#{topic}"
       full_topic = "#{root_topic}/#{region}" if region == '#'
-      puts "Subscribing to: #{full_topic}"
       mqtt_obj.subscribe(full_topic, qos)
 
       # MQTT::ProtocolException: No Ping Response received for 23 seconds (MQTT::ProtocolException)
