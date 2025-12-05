@@ -8,6 +8,8 @@ gemspec
 
 gem 'bundler', '>=4.0.0'
 gem 'bundle-audit', '0.2.0'
+gem 'executable-hooks', '1.7.1'
+gem 'gem-wrappers', '1.4.0'
 gem 'geocoder', '1.8.6'
 gem 'google-protobuf', '4.33.1'
 gem 'grpc-tools', '1.76.0'
