@@ -11,7 +11,7 @@ else
 fi
 
 function usage() {
-  echo $"Usage: $0 <new ruby version e.g. 2.4.4> <optional bool running from build_meshtastic_gem.sh>"
+  echo $"Usage: $0 <new ruby version e.g. 2.4.4> <optional bool running from build_gem.sh>"
   exit 1
 }
 
@@ -42,4 +42,4 @@ cd $meshtastic_root && ./upgrade_gem.sh
 rvmsudo rvm install ruby-$new_ruby_version
 echo $new_ruby_version > $meshtastic_root/.ruby-version
 
-cd $meshtastic_root && rvm use $new_ruby_version@$ruby_gemset && ./build_meshtastic_gem.sh
+cd $meshtastic_root && rvm use $new_ruby_version@$ruby_gemset && ./build_gem.sh

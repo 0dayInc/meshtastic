@@ -10,4 +10,4 @@ else
 fi
 
 export rvmsudo_secure_path=1
-rvmsudo /bin/bash --login -c "cd ${mesh_root} && ./build_meshtastic_gem.sh"
+rvmsudo /bin/bash --login -c "cd ${mesh_root} && ./build_gem.sh"
