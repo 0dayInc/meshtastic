@@ -30,7 +30,7 @@ fi
 
 if [[ $old_ruby_version == $new_ruby_version ]]; then
   export rvmsudo_secure_path=1
-  rvmsudo /bin/bash --login -c "cd ${mesh_root} && ./reinstall_meshtastic_gemset.sh"
+  rvmsudo /bin/bash --login -c "cd ${mesh_root} && ./reinstall_gemset.sh"
   rvmsudo rake
   rvmsudo rake install
   rvmsudo rake rerdoc
