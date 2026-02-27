@@ -34,6 +34,7 @@ fi
 
 # Upgrade RVM
 export rvmsudo_secure_path=1
+# Keep this command to pull master to avoid unknown ruby interpreter error when using latest version of Ruby.
 rvmsudo rvm get master
 rvm reload
 
