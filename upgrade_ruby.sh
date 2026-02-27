@@ -34,7 +34,7 @@ fi
 
 # Upgrade RVM
 export rvmsudo_secure_path=1
-rvmsudo rvm get head
+rvmsudo rvm get master
 rvm reload
 
 # Install New Version of RubyGems & Ruby
