@@ -7,7 +7,7 @@ source 'https://rubygems.org'
 gemspec
 
 gem 'bundler', '>=4.0.7'
-gem 'bundle-audit', '0.2.0'
+gem 'bundler-audit', '>=0.9.3'
 gem 'executable-hooks', '1.7.1'
 gem 'gem-wrappers', '1.4.0'
 gem 'geocoder', '1.8.6'
