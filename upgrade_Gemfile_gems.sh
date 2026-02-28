@@ -1,21 +1,19 @@
 #!/bin/bash --login
+export rvmsudo_secure_path=1
+rvmsudo gem update --system
+
 cat Gemfile | awk '{print $2}' | grep -E "^'.+$" | grep -v -e rubygems.org | while read gem; do 
   this_gem=`echo $gem | sed "s/'//g" | sed 's/\,//g'`
-  latest_version=`gem search -r $this_gem | grep -E "^${this_gem}\s.+$" | awk '{print $2}' | sed 's/(//g' | sed 's/)//g' | sed 's/,//g'`
   echo "${this_gem} => $latest_version"
-  os=`uname -s`
-  if [[ $os == 'Linux' ]]; then
-    case $this_gem in
-      'bundler'|'rubocop'|'rubocop-rake'|'rubocop-rspec')
-	sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '>=${latest_version}'/g" Gemfile;;
-      *)
-	sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '${latest_version}'/g" Gemfile;;
-    esac
-  elif [[ $os == 'Darwin' ]]; then
-    if [[ $this_gem == 'bundler' ]]; then
-      sed -i '' "s/^gem '${this_gem}'.*$/gem '${this_gem}', '>=${latest_version}'/g" Gemfile
-    else
-      sed -i '' "s/^gem '${this_gem}'.*$/gem '${this_gem}', '${latest_version}'/g" Gemfile
-    fi
+  if [[ $this_gem == 'rdoc' ]]; then
+    echo 'rdoc is now bundled with Ruby. Ignorning version checks in Gemfile to avoid version mismatch issues.'
+    latest_version=`gem list rdoc | sed 's/[(|)]//g' | sed 's/,/ /g' | awk '{print $2}'`
+    sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '${latest_version}'/g" Gemfile
+  elif [[ $this_gem == 'bundler' || $this_gem == 'bundler-audit' ]]; then
+    latest_version=`gem search -r $this_gem | grep -E "^${this_gem}\s.+$" | awk '{print $2}' | sed 's/(//g' | sed 's/)//g' | sed 's/,//g'`
+    sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '>=${latest_version}'/g" Gemfile
+  else
+    latest_version=`gem search -r $this_gem | grep -E "^${this_gem}\s.+$" | awk '{print $2}' | sed 's/(//g' | sed 's/)//g' | sed 's/,//g'`
+    sed -i "s/^gem '${this_gem}'.*$/gem '${this_gem}', '${latest_version}'/g" Gemfile
   fi
 done

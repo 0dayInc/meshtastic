@@ -8,7 +8,7 @@ require 'meshtastic/version'
 Gem::Specification.new do |spec|
   ruby_version = ">= #{File.read('.ruby-version').split('-').last.chomp}".freeze
   # spec.required_ruby_version = ruby_version
-  spec.required_ruby_version = '>= 3.3.0'
+  spec.required_ruby_version = '>= 4.0.0'
   spec.name = 'meshtastic'
   spec.version = Meshtastic::VERSION
   spec.authors = ['0day Inc.']
@@ -16,7 +16,7 @@ Gem::Specification.new do |spec|
   spec.summary = 'Ruby gem for Meshtastic'
   spec.description = 'https://github.com/0dayinc/meshtastic/README.md'
   spec.homepage = 'https://github.com/0dayinc/meshtastic'
-  spec.license = 'MIT'
+  spec.license = 'GNU General Public License v3.0'
   spec.metadata['rubygems_mfa_required'] = 'true'
 
   spec.files = `git ls-files -z`.split("\x00")
