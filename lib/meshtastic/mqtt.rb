@@ -219,7 +219,7 @@ module Meshtastic
             #                  include_arr.all? { |include| flat_message.include?(include) }
             #                )
 
-            disp = true if exclude_arr.none? { |exclude| flat_message.include?(exclude) } &&
+            disp = true if !exclude_arr.intersect?(flat_message) &&
                            include_arr.all? { |include| flat_message.include?(include) }
 
             if disp
