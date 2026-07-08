@@ -206,7 +206,7 @@ module Meshtastic
 
         dump_stdout_data(type: type) do |data|
           disp = false
-          disp = true if exclude_arr.none? { |exclude| data.include?(exclude) } && (
+          disp = true if !exclude_arr.intersect?(data) && (
                            include_arr.empty? ||
                            include_arr.all? { |include| data.include?(include) }
                          )
@@ -383,7 +383,7 @@ module Meshtastic
           if message.is_a?(Hash)
             flat_message = message.values.join(' ')
 
-            disp = true if exclude_arr.none? { |exclude| flat_message.include?(exclude) } && (
+            disp = true if !exclude_arr.intersect?(flat_message) && (
                              include_arr.first == message[:id] ||
                              include_arr.all? { |include| flat_message.include?(include) }
                            )
