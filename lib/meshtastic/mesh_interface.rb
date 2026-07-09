@@ -213,10 +213,16 @@ module Meshtastic
       hop_limit = opts[:hop_limit] ||= 3
 
       public_psk = '1PG7OiApB1nwvP+rz05pAQ=='
-      psks = opts[:psks] ||= { LongFast: public_psk }
-      raise 'ERROR: psks parameter must be a hash of :channel => psk key value pairs' unless psks.is_a?(Hash)
+      # Explicit nil means "do not encrypt" (serial/radio path — device owns PSK).
+      if opts.key?(:psks) && opts[:psks].nil?
+        psks = nil
+      else
+        psks = opts[:psks] || { LongFast: public_psk }
+        raise 'ERROR: psks parameter must be a hash of :channel => psk key value pairs' unless psks.is_a?(Hash)
 
-      psks[:LongFast] = public_psk if psks[:LongFast] == 'AQ=='
+        psks = psks.dup
+        psks[:LongFast] = public_psk if psks[:LongFast] == 'AQ=='
+      end
 
       # my_info = Meshtastic::FromRadio.my_info
       # wait_connected if to != my_info.my_node_num && my_info.is_a(Meshtastic::Deviceonly::MyInfo)
@@ -228,7 +234,10 @@ module Meshtastic
       mesh_packet.hop_limit = hop_limit
       mesh_packet.id = generate_packet_id(last_packet_id: last_packet_id)
 
-      if psks
+      # When psks is nil/empty, leave the packet decoded so the radio (serial/TCP)
+      # device can apply the channel PSK itself. MQTT callers must pass psks so the
+      # ServiceEnvelope payload is pre-encrypted for the mesh.
+      if psks && !psks.empty?
         nonce_packet_id = [mesh_packet.id].pack('V').ljust(8, "\x00")
         nonce_from_node = [from].pack('V').ljust(8, "\x00")
         nonce = "#{nonce_packet_id}#{nonce_from_node}"
@@ -305,10 +314,15 @@ module Meshtastic
       raise "ERROR: Invalid port_num" unless port_num.positive? && port_num < max_port_num
 
       public_psk =  '1PG7OiApB1nwvP+rz05pAQ=='
-      psks = opts[:psks] ||= { LongFast: public_psk }
-      raise 'ERROR: psks parameter must be a hash of :channel => psk key value pairs' unless psks.is_a?(Hash)
+      if opts.key?(:psks) && opts[:psks].nil?
+        psks = nil
+      else
+        psks = opts[:psks] || { LongFast: public_psk }
+        raise 'ERROR: psks parameter must be a hash of :channel => psk key value pairs' unless psks.is_a?(Hash)
 
-      psks[:LongFast] = public_psk if psks[:LongFast] == 'AQ=='
+        psks = psks.dup
+        psks[:LongFast] = public_psk if psks[:LongFast] == 'AQ=='
+      end
 
       data_len = data.payload.length
       max_len = Meshtastic::Constants::DATA_PAYLOAD_LEN
@@ -369,10 +383,15 @@ module Meshtastic
       on_response = opts[:on_response]
 
       public_psk =  '1PG7OiApB1nwvP+rz05pAQ=='
-      psks = opts[:psks] ||= { LongFast: public_psk }
-      raise 'ERROR: psks parameter must be a hash of :channel => psk key value pairs' unless psks.is_a?(Hash)
+      if opts.key?(:psks) && opts[:psks].nil?
+        psks = nil
+      else
+        psks = opts[:psks] || { LongFast: public_psk }
+        raise 'ERROR: psks parameter must be a hash of :channel => psk key value pairs' unless psks.is_a?(Hash)
 
-      psks[:LongFast] = public_psk if psks[:LongFast] == 'AQ=='
+        psks = psks.dup
+        psks[:LongFast] = public_psk if psks[:LongFast] == 'AQ=='
+      end
 
       # TODO: verify text length validity
       max_txt_len = Meshtastic::Constants::DATA_PAYLOAD_LEN
@@ -381,7 +400,7 @@ module Meshtastic
       port_num = Meshtastic::PortNum::TEXT_MESSAGE_APP
 
       data = Meshtastic::Data.new
-      data.payload = text.force_encoding('ASCII-8BIT')
+      data.payload = text.to_s.dup.force_encoding('ASCII-8BIT')
       data.portnum = port_num
       data.want_response = want_response
       # puts data.to_h
