@@ -24,16 +24,12 @@ If bundler is not being used to manage dependencies, install the gem by executin
 
 ## Usage
 
-The primary interaction modules today are `Meshtastic::MQTT` (broker) and `Meshtastic::SerialInterface` (USB/UART). Examples for each follow.
-
-### MQTT
-
-To view MQTT messages, and include only messages containing `_APP` _and_ `LongFast` strings, use the following code:
+At the moment the only module available is `Meshtastic::MQTT`.  To view MQTT messages, and include only messages containing `_APP` _and_ `LongFast` strings, use the following code:
 
 ```ruby
 require 'meshtastic'
 Meshtastic::MQTT.help
-mqtt_obj = Meshtastic::MQTT.connect
+mqtt_obj = Meshastic::MQTT.connect
 puts mqtt_obj.inspect
 Meshtastic::MQTT.subscribe(
   mqtt_obj: mqtt_obj,
@@ -45,7 +41,7 @@ This code will dump the contents of every message:
 
 ```ruby
 require 'meshtastic'
-mqtt_obj = Meshtastic::MQTT.connect
+mqtt_obj = Meshastic::MQTT.connect
 Meshtastic::MQTT.subscribe(
   mqtt_obj: mqtt_obj,
   root_topic: 'msh',
@@ -61,7 +57,7 @@ Sending a message over MQTT:
 
 ```ruby
 require 'meshtastic'
-mqtt_obj = Meshtastic::MQTT.connect
+mqtt_obj = Meshastic::MQTT.connect
 client_id = "!#{mqtt_obj.client_id}"
 Meshtastic::MQTT.send_text(
   mqtt_obj: mqtt_obj,
@@ -80,7 +76,7 @@ One of the "gotchas" when sending messages is ensuring you're sending over the p
 
 ```ruby
 require 'meshtastic'
-mqtt_obj = Meshtastic::MQTT.connect
+mqtt_obj = Meshastic::MQTT.connect
 Meshtastic::MQTT.subscribe(
   mqtt_obj: mqtt_obj,
   root_topic: 'msh',
@@ -101,82 +97,20 @@ You should see something like this:
 
 Note where is says `channel: 93`.  This is the `channel` value required to send messages in this particular example.
 
-### Serial Interface
 
-Talk directly to a Meshtastic node over USB/UART (`/dev/ttyUSB*`, `/dev/ttyACM*`). Unlike MQTT, the radio owns channel crypto for serial: payloads are sent *decoded* and the device encrypts with its configured channel key.
+## Serial Interface
 
-To inspect available methods and open a serial session:
+Talk directly to a Meshtastic node over USB/UART (`/dev/ttyUSB*`, `/dev/ttyACM*`).
 
 ```ruby
 require 'meshtastic'
-Meshtastic::SerialInterface.help
+
 serial_obj = Meshtastic::SerialInterface.connect(
   block_dev: '/dev/ttyUSB0', # or /dev/ttyACM0
   baud: 115_200
 )
-puts serial_obj.inspect
-```
 
-This code will dump every FromRadio packet (blocks until CTRL+C):
-
-```ruby
-require 'meshtastic'
-serial_obj = Meshtastic::SerialInterface.connect(
-  block_dev: '/dev/ttyUSB0',
-  baud: 115_200
-)
-Meshtastic::SerialInterface.subscribe(
-  serial_obj: serial_obj
-) do |message|
-  puts message.inspect
-end
-```
-
-Filter with `include` / `exclude` (comma-delimited substrings), same idea as MQTT:
-
-```ruby
-require 'meshtastic'
-serial_obj = Meshtastic::SerialInterface.connect(block_dev: '/dev/ttyUSB0')
-Meshtastic::SerialInterface.subscribe(
-  serial_obj: serial_obj,
-  include: 'TEXT_MESSAGE_APP',
-  exclude: 'TELEMETRY_APP'
-) do |message|
-  puts message.inspect
-end
-```
-
-Sending a message over serial:
-
-```ruby
-require 'meshtastic'
-serial_obj = Meshtastic::SerialInterface.connect(
-  block_dev: '/dev/ttyUSB0',
-  baud: 115_200
-)
-Meshtastic::SerialInterface.send_text(
-  serial_obj: serial_obj,
-  to: '!ffffffff',   # broadcast; or a node id like '!f33ddad5'
-  channel: 0,        # primary channel index on the radio
-  text: 'Hello over serial!'
-)
-Meshtastic::SerialInterface.disconnect(serial_obj: serial_obj)
-```
-
-A typical end-to-end send + receive session looks like this (connect once, send, then subscribe):
-
-```ruby
-require 'meshtastic'
-
-serial_obj = Meshtastic::SerialInterface.connect(
-  block_dev: '/dev/ttyUSB0',
-  baud: 115_200
-)
-
-# Optional: give the device a moment to finish want_config / my_info
-sleep 2
-puts "local node: !#{serial_obj[:my_node_num].to_s(16)}" if serial_obj[:my_node_num]
-
+# Send a text message (device applies channel PSK)
 Meshtastic::SerialInterface.send_text(
   serial_obj: serial_obj,
   to: '!ffffffff',
@@ -184,13 +118,15 @@ Meshtastic::SerialInterface.send_text(
   text: 'Hello over serial!'
 )
 
-# Blocks; CTRL+C disconnects cleanly
-Meshtastic::SerialInterface.subscribe(serial_obj: serial_obj) do |message|
-  puts message.inspect
+# Subscribe to FromRadio packets (blocks; CTRL+C to stop)
+Meshtastic::SerialInterface.subscribe(serial_obj: serial_obj) do |msg|
+  puts msg.inspect
 end
+
+Meshtastic::SerialInterface.disconnect(serial_obj: serial_obj)
 ```
 
-Non-blocking receive helpers (useful when you drive the loop yourself):
+Non-blocking helpers:
 
 ```ruby
 # Pop one framed FromRadio (or nil on timeout)
@@ -205,7 +141,7 @@ puts Meshtastic::SerialInterface.dump_stdout_data(type: :console)
 puts Meshtastic::SerialInterface.dump_stdout_data(type: :proto).size
 ```
 
-> **Note:** Serial path leaves mesh packets *decoded* and lets the radio encrypt with its configured channel key. The MQTT path still pre-encrypts with the PSK you supply via `psks:`. Channel index (`channel:`) on serial is the index configured on the *device*, not the MQTT channel hash.
+> **Note:** Serial path leaves mesh packets *decoded* and lets the radio encrypt with its configured channel key. The MQTT path still pre-encrypts with the PSK you supply.
 
 ## Contributing
 
