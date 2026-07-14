@@ -6,7 +6,7 @@ source 'https://rubygems.org'
 
 gemspec
 
-gem 'bundler', '>=4.0.15'
+gem 'bundler', '>=4.0.16'
 gem 'bundler-audit', '>=0.9.3'
 gem 'executable-hooks', '1.7.1'
 gem 'gem-wrappers', '1.4.0'
@@ -22,4 +22,4 @@ gem 'rubocop-rake', '0.7.1'
 gem 'rubocop-rspec', '3.10.2'
 gem 'rvm', '1.11.3.9'
 gem 'uart', '1.0.0'
-gem 'yard', '0.9.44'
+gem 'yard', '0.9.45'
