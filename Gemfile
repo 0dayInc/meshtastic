@@ -6,7 +6,7 @@ source 'https://rubygems.org'
 
 gemspec
 
-gem 'bundler', '>=4.0.17'
+gem 'bundler', '>=4.0.18'
 gem 'bundler-audit', '>=0.9.3'
 gem 'executable-hooks', '1.7.1'
 gem 'gem-wrappers', '1.4.0'
