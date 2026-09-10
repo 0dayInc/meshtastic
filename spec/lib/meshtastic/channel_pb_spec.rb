@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::ChannelPB do
+describe Meshtastic::ChannelSettings do
 end

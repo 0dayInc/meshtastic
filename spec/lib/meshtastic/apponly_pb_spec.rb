@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::ApponlyPB do
+describe Meshtastic::ChannelSet do
 end

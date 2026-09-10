@@ -2,21 +2,24 @@
 
 require 'meshtastic/config_pb'
 
-# Plugin used to interact with Meshtastic nodes
 module Meshtastic
-  module Config
-    # Author(s):: 0day Inc. <support@0dayinc.com>
-
-    public_class_method def self.authors
-      "AUTHOR(S):
-        0day Inc. <support@0dayinc.com>
-      "
+  class Config
+    def self.get(opts = {})
+      Admin.get_config(opts)
     end
 
-    # Display Usage for this Module
+    def self.set(opts = {})
+      Admin.set_config(opts.merge(config: opts.fetch(:config)))
+    end
 
-    public_class_method def self.help
+    def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
+
+    def self.help
       puts "USAGE:
+        #{self}.get(serial_obj: serial_obj, config_type: :LORA_CONFIG)
+        #{self}.set(serial_obj: serial_obj, config: #{self}.new)
         #{self}.authors
       "
     end

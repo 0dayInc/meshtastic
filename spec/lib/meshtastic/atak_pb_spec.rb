@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::ATAKPB do
+describe Meshtastic::TAKPacket do
 end

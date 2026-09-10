@@ -2,21 +2,24 @@
 
 require 'meshtastic/localonly_pb'
 
-# Plugin used to interact with Meshtastic nodes
 module Meshtastic
   module Localonly
-    # Author(s):: 0day Inc. <support@0dayinc.com>
-
-    public_class_method def self.authors
-      "AUTHOR(S):
-        0day Inc. <support@0dayinc.com>
-      "
+    def self.decode_config(bytes)
+      Meshtastic::LocalConfig.decode(bytes)
     end
 
-    # Display Usage for this Module
+    def self.decode_module_config(bytes)
+      Meshtastic::LocalModuleConfig.decode(bytes)
+    end
 
-    public_class_method def self.help
+    def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
+
+    def self.help
       puts "USAGE:
+        #{self}.decode_config(bytes)
+        #{self}.decode_module_config(bytes)
         #{self}.authors
       "
     end

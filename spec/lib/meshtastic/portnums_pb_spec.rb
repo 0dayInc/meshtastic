@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::PortnumsPB do
+describe Meshtastic::PortNum do
 end

@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::ClientonlyPB do
+describe Meshtastic::Config do
 end

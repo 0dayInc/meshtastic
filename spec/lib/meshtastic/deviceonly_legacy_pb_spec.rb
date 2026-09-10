@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::DeviceonlyLegacyPB do
+describe Meshtastic::NodeDatabase_Legacy do
 end

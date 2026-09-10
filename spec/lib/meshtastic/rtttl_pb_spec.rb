@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::RTTTLPB do
+describe Meshtastic::RTTTLConfig do
 end

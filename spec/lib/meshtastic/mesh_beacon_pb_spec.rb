@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::MeshBeaconPB do
+describe Meshtastic::MeshBeacon do
 end

@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::CannedmessagesPB do
+describe Meshtastic::CannedMessageModuleConfig do
 end

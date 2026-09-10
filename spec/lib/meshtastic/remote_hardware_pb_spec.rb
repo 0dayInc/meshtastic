@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::RemoteHardwarePB do
+describe Meshtastic::HardwareMessage do
 end

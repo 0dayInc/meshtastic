@@ -2,21 +2,27 @@
 
 require 'meshtastic/clientonly_pb'
 
-# Plugin used to interact with Meshtastic nodes
 module Meshtastic
   module Clientonly
-    # Author(s):: 0day Inc. <support@0dayinc.com>
-
-    public_class_method def self.authors
-      "AUTHOR(S):
-        0day Inc. <support@0dayinc.com>
-      "
+    def self.encode(opts = {})
+      profile = Meshtastic::DeviceProfile.new
+      profile.long_name = opts[:long_name].to_s if opts[:long_name]
+      profile.short_name = opts[:short_name].to_s if opts[:short_name]
+      profile
     end
 
-    # Display Usage for this Module
+    def self.decode(bytes)
+      Meshtastic::DeviceProfile.decode(bytes)
+    end
 
-    public_class_method def self.help
+    def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
+
+    def self.help
       puts "USAGE:
+        #{self}.encode(long_name: 'Node', short_name: 'N1')
+        #{self}.decode(bytes)
         #{self}.authors
       "
     end

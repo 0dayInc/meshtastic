@@ -2,21 +2,24 @@
 
 require 'meshtastic/portnums_pb'
 
-# Plugin used to interact with Meshtastic nodes
 module Meshtastic
   module Portnums
-    # Author(s):: 0day Inc. <support@0dayinc.com>
-
-    public_class_method def self.authors
-      "AUTHOR(S):
-        0day Inc. <support@0dayinc.com>
-      "
+    def self.lookup(name_or_number)
+      if name_or_number.is_a?(Integer)
+        Meshtastic::PortNum.lookup(name_or_number)
+      else
+        Meshtastic::PortNum.resolve(name_or_number.to_sym)
+      end
     end
 
-    # Display Usage for this Module
+    def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
 
-    public_class_method def self.help
+    def self.help
       puts "USAGE:
+        #{self}.lookup(:TEXT_MESSAGE_APP)
+        #{self}.lookup(1)
         #{self}.authors
       "
     end

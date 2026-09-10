@@ -2,21 +2,19 @@
 
 require 'meshtastic/connection_status_pb'
 
-# Plugin used to interact with Meshtastic nodes
 module Meshtastic
   module ConnectionStatus
-    # Author(s):: 0day Inc. <support@0dayinc.com>
-
-    public_class_method def self.authors
-      "AUTHOR(S):
-        0day Inc. <support@0dayinc.com>
-      "
+    def self.decode(bytes)
+      Meshtastic::DeviceConnectionStatus.decode(bytes)
     end
 
-    # Display Usage for this Module
+    def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
 
-    public_class_method def self.help
+    def self.help
       puts "USAGE:
+        #{self}.decode(bytes)
         #{self}.authors
       "
     end

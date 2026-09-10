@@ -2,21 +2,24 @@
 
 require 'meshtastic/deviceonly_pb'
 
-# Plugin used to interact with Meshtastic nodes
 module Meshtastic
   module Deviceonly
-    # Author(s):: 0day Inc. <support@0dayinc.com>
-
-    public_class_method def self.authors
-      "AUTHOR(S):
-        0day Inc. <support@0dayinc.com>
-      "
+    def self.decode_state(bytes)
+      Meshtastic::DeviceState.decode(bytes)
     end
 
-    # Display Usage for this Module
+    def self.decode_nodedb(bytes)
+      Meshtastic::NodeDatabase.decode(bytes)
+    end
 
-    public_class_method def self.help
+    def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
+
+    def self.help
       puts "USAGE:
+        #{self}.decode_state(bytes)
+        #{self}.decode_nodedb(bytes)
         #{self}.authors
       "
     end

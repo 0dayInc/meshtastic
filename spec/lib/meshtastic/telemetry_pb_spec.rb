@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::TelemetryPB do
+describe Meshtastic::Telemetry do
 end
