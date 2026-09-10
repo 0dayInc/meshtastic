@@ -31,13 +31,13 @@ Routes a `Meshtastic::Data` payload to a connected radio.
 
 ```ruby
 Meshtastic.deliver_data(
-  serial_obj: serial_obj,   # or bluetooth_obj: or tcp_obj:
+  serial_obj: serial_obj,   # or bluetooth_obj: / tcp_obj: / mqtt_obj:
   data: Meshtastic::Data.new(portnum: :TEXT_MESSAGE_APP, payload: 'hi'),
   port_num: Meshtastic::PortNum::TEXT_MESSAGE_APP
 )
 ```
 
-Raises `ArgumentError` unless `data` is a `Meshtastic::Data` and one of `serial_obj`, `bluetooth_obj`, or `tcp_obj` is present.
+Raises `ArgumentError` unless `data` is a `Meshtastic::Data` and one of `serial_obj`, `bluetooth_obj`, `tcp_obj`, or `mqtt_obj` is present.
 
 ## Related
 

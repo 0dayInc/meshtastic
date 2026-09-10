@@ -8,7 +8,7 @@ module Meshtastic
   module TCP
     DEFAULT_PORT = 4403
 
-    def self.connect(opts = {})
+    public_class_method def self.connect(opts = {})
       host = opts[:host] ||= '127.0.0.1'
       port = opts[:port] ||= DEFAULT_PORT
       tcp_obj = nil
@@ -45,57 +45,108 @@ module Meshtastic
       raise
     end
 
-    def self.wait_for_config(opts = {})
+    public_class_method def self.wait_for_config(opts = {})
       Meshtastic::Serial.wait_for_config(opts.merge(serial_obj: opts[:tcp_obj] || opts[:serial_obj]))
     end
 
-    def self.send_to_radio(opts = {})
+    public_class_method def self.send_to_radio(opts = {})
       Meshtastic::Serial.send_to_radio(opts.merge(serial_obj: opts[:tcp_obj] || opts[:serial_obj]))
     end
 
-    def self.send_text(opts = {})
+    public_class_method def self.send_text(opts = {})
       Meshtastic::Serial.send_text(opts.merge(serial_obj: opts[:tcp_obj] || opts[:serial_obj]))
     end
 
-    def self.send_data(opts = {})
+    public_class_method def self.send_data(opts = {})
       Meshtastic::Serial.send_data(opts.merge(serial_obj: opts[:tcp_obj] || opts[:serial_obj]))
     end
 
-    def self.recv_from_radio(opts = {})
+    public_class_method def self.recv_from_radio(opts = {})
       Meshtastic::Serial.recv_from_radio(opts.merge(serial_obj: opts[:tcp_obj] || opts[:serial_obj]))
     end
 
-    def self.drain_from_radio(opts = {})
+    public_class_method def self.drain_from_radio(opts = {})
       Meshtastic::Serial.drain_from_radio(opts.merge(serial_obj: opts[:tcp_obj] || opts[:serial_obj]))
     end
 
-    def self.subscribe(opts = {}, &)
-      Meshtastic::Serial.subscribe(opts.merge(serial_obj: opts[:tcp_obj] || opts[:serial_obj]), &)
+    public_class_method def self.subscribe(opts = {})
+      merged = opts.merge(serial_obj: opts[:tcp_obj] || opts[:serial_obj])
+      if block_given?
+        Meshtastic::Serial.subscribe(merged) { |msg| yield msg } # rubocop:disable Style/ExplicitBlockArgument
+      else
+        Meshtastic::Serial.subscribe(merged)
+      end
     end
 
-    def self.disconnect(opts = {})
+    public_class_method def self.disconnect(opts = {})
       Meshtastic::Serial.disconnect(serial_obj: opts[:tcp_obj] || opts[:serial_obj])
     end
 
-    def self.authors
+    public_class_method def self.authors
       "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
     end
 
-    def self.help
-      puts "Send and receive Meshtastic messages over TCP (default port #{DEFAULT_PORT}).
-
-      USAGE:
-        tcp_obj = #{self}.connect(
-          host: 'optional - (default: 127.0.0.1)',
-          port: 'optional - (default: 4403)',
-          want_config: 'optional - request full node DB after connect (default: true)'
+    public_class_method def self.help
+      puts "        USAGE:
+        # Run the connect class method for this module.
+        #{self}.connect(
+          host: 'optional - value for host passed into connect',
+          port: 'optional - value for port passed into connect',
+          socket: 'optional - value for socket passed into connect',
+          debug_out: 'optional - value for debug_out passed into connect'
         )
 
-        #{self}.wait_for_config(tcp_obj: tcp_obj, timeout: 10)
-        #{self}.send_text(tcp_obj: tcp_obj, to: '!ffffffff', channel: 0, text: 'Hello over TCP!')
-        #{self}.subscribe(tcp_obj: tcp_obj, include: 'TEXT_MESSAGE_APP')
-        #{self}.disconnect(tcp_obj: tcp_obj)
+        # Run the wait_for_config class method for this module.
+        #{self}.wait_for_config(
+          tcp_obj: 'optional - value for tcp_obj passed into wait_for_config',
+          serial_obj: 'optional - value for serial_obj passed into wait_for_config'
+        )
+
+        # Run the send_to_radio class method for this module.
+        #{self}.send_to_radio(
+          tcp_obj: 'optional - value for tcp_obj passed into send_to_radio',
+          serial_obj: 'optional - value for serial_obj passed into send_to_radio'
+        )
+
+        # Run the send_text class method for this module.
+        #{self}.send_text(
+          tcp_obj: 'optional - value for tcp_obj passed into send_text',
+          serial_obj: 'optional - value for serial_obj passed into send_text'
+        )
+
+        # Run the send_data class method for this module.
+        #{self}.send_data(
+          tcp_obj: 'optional - value for tcp_obj passed into send_data',
+          serial_obj: 'optional - value for serial_obj passed into send_data'
+        )
+
+        # Run the recv_from_radio class method for this module.
+        #{self}.recv_from_radio(
+          tcp_obj: 'optional - value for tcp_obj passed into recv_from_radio',
+          serial_obj: 'optional - value for serial_obj passed into recv_from_radio'
+        )
+
+        # Run the drain_from_radio class method for this module.
+        #{self}.drain_from_radio(
+          tcp_obj: 'optional - value for tcp_obj passed into drain_from_radio',
+          serial_obj: 'optional - value for serial_obj passed into drain_from_radio'
+        )
+
+        # Run the subscribe class method for this module.
+        #{self}.subscribe(
+          tcp_obj: 'optional - value for tcp_obj passed into subscribe',
+          serial_obj: 'optional - value for serial_obj passed into subscribe'
+        )
+
+        # Run the disconnect class method for this module.
+        #{self}.disconnect(
+          tcp_obj: 'optional - value for tcp_obj passed into disconnect',
+          serial_obj: 'optional - value for serial_obj passed into disconnect'
+        )
+
+        # Run the authors class method for this module.
         #{self}.authors
+
       "
     end
   end

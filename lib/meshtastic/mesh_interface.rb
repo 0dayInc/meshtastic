@@ -613,5 +613,16 @@ module Meshtastic
         #{self}.authors
       "
     end
+
+    public_class_method def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
+
+    public_class_method def self.help
+      puts "USAGE:
+        # Print the AUTHOR(S) string for this module.
+        #{self}.authors
+      "
+    end
   end
 end

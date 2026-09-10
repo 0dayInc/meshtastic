@@ -4,7 +4,8 @@ require 'meshtastic/portnums_pb'
 
 module Meshtastic
   module Portnums
-    def self.lookup(name_or_number)
+    public_class_method def self.lookup(opts = {})
+      name_or_number = opts[:value] || opts[:name_or_number]
       if name_or_number.is_a?(Integer)
         Meshtastic::PortNum.lookup(name_or_number)
       else
@@ -12,15 +13,21 @@ module Meshtastic
       end
     end
 
-    def self.authors
+    public_class_method def self.authors
       "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
     end
 
-    def self.help
-      puts "USAGE:
-        #{self}.lookup(:TEXT_MESSAGE_APP)
-        #{self}.lookup(1)
+    public_class_method def self.help
+      puts "        USAGE:
+        # Run the lookup class method for this module.
+        #{self}.lookup(
+          value: 'optional - value for value passed into lookup',
+          name_or_number: 'optional - value for name_or_number passed into lookup'
+        )
+
+        # Run the authors class method for this module.
         #{self}.authors
+
       "
     end
   end

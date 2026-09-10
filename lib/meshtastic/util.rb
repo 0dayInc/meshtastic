@@ -62,8 +62,10 @@ module Meshtastic
     # Display Usage for this Module
 
     public_class_method def self.help
-      puts "USAGE:
+      puts "        USAGE:
+        # Run the authors class method for this module.
         #{self}.authors
+
       "
     end
   end

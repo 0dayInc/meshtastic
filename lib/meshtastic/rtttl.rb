@@ -4,29 +4,38 @@ require 'meshtastic/rtttl_pb'
 
 module Meshtastic
   module RTTTL
-    def self.encode(opts = {})
+    public_class_method def self.encode(opts = {})
       config = Meshtastic::RTTTLConfig.new
       config.ringtone = opts.fetch(:ringtone, '')
       config
     end
 
-    def self.set(opts = {})
+    public_class_method def self.set(opts = {})
       Admin.send(opts.merge(set_ringtone_message: opts.fetch(:ringtone)))
     end
 
-    def self.get(opts = {})
+    public_class_method def self.get(opts = {})
       Admin.send(opts.merge(get_ringtone_request: true))
     end
 
-    def self.authors
+    public_class_method def self.authors
       "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
     end
 
-    def self.help
-      puts "USAGE:
-        #{self}.set(serial_obj: serial_obj, ringtone: 'Mario:d=4,o=5,b=125:16e6')
-        #{self}.get(serial_obj: serial_obj)
+    public_class_method def self.help
+      puts "        USAGE:
+        # Run the encode class method for this module.
+        #{self}.encode
+
+        # Run the set class method for this module.
+        #{self}.set
+
+        # Run the get class method for this module.
+        #{self}.get
+
+        # Run the authors class method for this module.
         #{self}.authors
+
       "
     end
   end

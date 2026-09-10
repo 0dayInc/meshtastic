@@ -4,7 +4,7 @@ require 'meshtastic/mesh_pb'
 
 module Meshtastic
   class Position
-    def self.build(opts = {})
+    public_class_method def self.build(opts = {})
       position = new
       position.latitude_i = (opts.fetch(:lat).to_f * 10_000_000).round
       position.longitude_i = (opts.fetch(:lon).to_f * 10_000_000).round
@@ -13,7 +13,7 @@ module Meshtastic
       position
     end
 
-    def self.transmit(opts = {})
+    public_class_method def self.transmit(opts = {})
       data = Meshtastic::Data.new(
         portnum: :POSITION_APP,
         payload: build(opts).to_proto
@@ -21,14 +21,24 @@ module Meshtastic
       Meshtastic.deliver_data(opts.merge(data: data, port_num: Meshtastic::PortNum::POSITION_APP))
     end
 
-    def self.authors
+    public_class_method def self.authors
       "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
     end
 
-    def self.help
-      puts "USAGE:
-        #{self}.transmit(serial_obj: serial_obj, lat: 37.7749, lon: -122.4194, altitude: 10)
+    public_class_method def self.help
+      puts "        USAGE:
+        # Run the build class method for this module.
+        #{self}.build(
+          altitude: 'optional - value for altitude passed into build',
+          time: 'optional - value for time passed into build'
+        )
+
+        # Run the transmit class method for this module.
+        #{self}.transmit
+
+        # Run the authors class method for this module.
         #{self}.authors
+
       "
     end
   end

@@ -67,11 +67,28 @@ module Meshtastic
 
   # Display a List of Every Meshtastic Module
 
-  public_class_method def self.help
-    constants.sort
+  public_class_method def self.authors
+    "AUTHOR(S):\n      0day Inc. <support@0dayinc.com>\n    "
   end
 
-  def self.deliver_data(opts = {})
+  public_class_method def self.help
+    puts "        USAGE:
+        # Run the deliver_data class method for this module.
+        #{self}.deliver_data(
+          data: 'optional - value for data passed into deliver_data',
+          serial_obj: 'optional - value for serial_obj passed into deliver_data',
+          bluetooth_obj: 'optional - value for bluetooth_obj passed into deliver_data',
+          tcp_obj: 'optional - value for tcp_obj passed into deliver_data',
+          mqtt_obj: 'optional - value for mqtt_obj passed into deliver_data'
+        )
+
+        # Run the authors class method for this module.
+        #{self}.authors
+
+    "
+  end
+
+  public_class_method def self.deliver_data(opts = {})
     raise ArgumentError, 'data is required' unless opts[:data].is_a?(Meshtastic::Data)
 
     if opts[:serial_obj]
@@ -80,8 +97,10 @@ module Meshtastic
       Bluetooth.send_data(opts)
     elsif opts[:tcp_obj]
       TCP.send_data(opts)
+    elsif opts[:mqtt_obj]
+      MQTT.send_data(opts)
     else
-      raise ArgumentError, 'serial_obj, bluetooth_obj, or tcp_obj is required'
+      raise ArgumentError, 'serial_obj, bluetooth_obj, tcp_obj, or mqtt_obj is required'
     end
   end
 end
