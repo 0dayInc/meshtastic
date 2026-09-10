@@ -477,7 +477,9 @@ module Meshtastic
         decoder = Meshtastic::StoreAndForward
       when :TELEMETRY_APP
         decoder = Meshtastic::Telemetry
-      when :TEXT_MESSAGE_APP, :UNKNOWN_APP
+      when :TEXT_MESSAGE_APP
+        return payload.dup.force_encoding(Encoding::UTF_8).scrub
+      when :UNKNOWN_APP
         decoder = Meshtastic::Data
       when :TRACEROUTE_APP
         decoder = Meshtastic::RouteDiscovery

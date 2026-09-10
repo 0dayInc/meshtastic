@@ -22,7 +22,7 @@ module Meshtastic
       no_nodes = false if opts[:no_nodes].nil?
       no_nodes = true if opts[:no_nodes]
       # Note: In Ruby, we don't need to explicitly define a type hint for self.
-      raise Exception("StreamInterface is now abstract (to update existing code create SerialInterface instead)") if !defined?(@stream) && !no_proto
+      raise Exception("StreamInterface is now abstract (to update existing code use Meshtastic::Serial instead)") if !defined?(@stream) && !no_proto
 
       @stream = nil
       @rx_buf = []

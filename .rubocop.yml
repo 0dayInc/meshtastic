@@ -1,6 +1,7 @@
 AllCops: 
   UseCache: false
   NewCops: enable
+  SuggestExtensions: false
 Layout/LineLength:
   Max: 293
 Lint/UselessRescue:
