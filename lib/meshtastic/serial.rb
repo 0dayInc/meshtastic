@@ -13,12 +13,8 @@ require 'uart'
 # Wire protocol matches the official Python client:
 #   [START1=0x94][START2=0xC3][len_hi][len_lo] + protobuf(ToRadio|FromRadio)
 module Meshtastic
-  module SerialInterface # rubocop:disable Metrics/ModuleLength
-    @console_data = []
-    @proto_data = []
-    @from_radio_queue = nil
-    @rx_mutex = Mutex.new
-    @want_exit = false
+  module Serial # rubocop:disable Metrics/ModuleLength
+    @last_serial_obj = nil
 
     module_function
 
@@ -50,23 +46,25 @@ module Meshtastic
       serial_obj = opts[:serial_obj]
       debug_out = opts[:debug_out]
 
-      @want_exit = false
-      @from_radio_queue = Queue.new
-      @console_data = []
-      @proto_data = []
+      serial_obj[:from_radio_queue] = Queue.new
+      serial_obj[:config_queue] = Queue.new
+      serial_obj[:console_data] = []
+      serial_obj[:proto_data] = []
+      serial_obj[:rx_mutex] = Mutex.new
 
       Thread.new do
         Thread.current.abort_on_exception = false
         rx_buf = +''.b
         empty = +''.b
 
-        until @want_exit
+        until serial_obj[:closing]
           begin
-            chunk = serial_conn.read(1)
-            if chunk.nil? || chunk.empty?
-              sleep 0.01
-              next
-            end
+            next unless serial_conn.wait_readable(0.1)
+
+            chunk = serial_conn.read_nonblock(1, exception: false)
+            next if chunk == :wait_readable
+
+            raise EOFError, 'serial device disconnected' if chunk.nil? || chunk.empty?
 
             c = chunk.getbyte(0)
             rx_buf << chunk
@@ -76,11 +74,13 @@ module Meshtastic
               # looking for START1
               unless c == Meshtastic::START1
                 rx_buf = empty.dup
-                append_console_byte(chunk, debug_out)
+                append_console_byte(chunk, debug_out, serial_obj)
               end
             elsif ptr == 1
               # looking for START2
-              rx_buf = empty.dup unless c == Meshtastic::START2
+              unless c == Meshtastic::START2
+                rx_buf = c == Meshtastic::START1 ? chunk.dup : empty.dup
+              end
             elsif ptr >= (Meshtastic::HEADER_LEN - 1)
               packet_len = (rx_buf.getbyte(2) << 8) + rx_buf.getbyte(3)
 
@@ -95,20 +95,22 @@ module Meshtastic
                 handle_from_radio_bytes(payload: payload, serial_obj: serial_obj)
               end
             end
-          rescue IOError, Errno::EBADF, Errno::EIO
-            break if @want_exit
-
-            sleep 0.05
+          rescue IOError, SystemCallError => e
+            serial_obj[:rx_error] = IOError.new("Serial receive failed: #{e.message}") unless serial_obj[:closing]
+            break
           rescue StandardError => e
-            warn "Meshtastic::SerialInterface RX error: #{e.class}: #{e.message}" unless @want_exit
+            warn "Meshtastic::Serial RX error: #{e.class}: #{e.message}" unless serial_obj[:closing]
             sleep 0.05
           end
         end
+      ensure
+        serial_obj[:from_radio_queue].close
+        serial_obj[:config_queue].close
       end
     end
 
 
-    private_class_method def self.append_console_byte(chunk, debug_out)
+    private_class_method def self.append_console_byte(chunk, debug_out, serial_obj)
       if debug_out
         begin
           debug_out.write(chunk.force_encoding('UTF-8'))
@@ -116,7 +118,7 @@ module Meshtastic
           debug_out.write('?')
         end
       else
-        @rx_mutex.synchronize { @console_data << chunk.force_encoding('UTF-8') }
+        serial_obj[:rx_mutex].synchronize { serial_obj[:console_data] << chunk.force_encoding('UTF-8') }
       end
     end
 
@@ -128,8 +130,7 @@ module Meshtastic
       from_radio = Meshtastic::FromRadio.decode(payload)
       hash = from_radio.to_h
 
-      @rx_mutex.synchronize { @proto_data << hash }
-      @from_radio_queue << from_radio if @from_radio_queue
+      serial_obj[:rx_mutex].synchronize { serial_obj[:proto_data] << hash }
 
       # Cache useful device identity on the serial_obj handle.
       if serial_obj && from_radio.my_info
@@ -137,22 +138,27 @@ module Meshtastic
         serial_obj[:my_node_num] = from_radio.my_info.my_node_num
       end
       serial_obj[:metadata] = from_radio.metadata.to_h if serial_obj && from_radio.metadata
+      if from_radio.payload_variant == :config_complete_id && from_radio.config_complete_id == serial_obj[:config_id]
+        serial_obj[:config_complete] = true
+        serial_obj[:config_queue].close
+      end
 
       if from_radio.log_record
         msg = from_radio.log_record.message.to_s
-        @rx_mutex.synchronize { @console_data << "#{msg}\n" } unless msg.empty?
+        serial_obj[:rx_mutex].synchronize { serial_obj[:console_data] << "#{msg}\n" } unless msg.empty?
       end
 
+      serial_obj[:from_radio_queue] << from_radio
       from_radio
     rescue Google::Protobuf::ParseError => e
-      warn "Meshtastic::SerialInterface: failed to decode FromRadio (#{e.message})"
+      warn "Meshtastic::Serial: failed to decode FromRadio (#{e.message})"
       nil
     end
 
     # ---- public API ----------------------------------------------------------
 
     # Supported Method Parameters::
-    # Meshtastic::SerialInterface.request(
+    # Meshtastic::Serial.request(
     #   serial_obj: 'required serial_obj returned from #connect method',
     #   payload: 'required - array of bytes OR string to write to serial device'
     # )
@@ -169,8 +175,17 @@ module Meshtastic
           raise "ERROR: Invalid payload type: #{payload.class}"
         end
 
-      serial_conn.write(bytes)
-      serial_conn.flush
+      serial_obj[:tx_mutex] ||= Mutex.new
+      serial_obj[:tx_mutex].synchronize do
+        offset = 0
+        while offset < bytes.bytesize
+          count = serial_conn.write(bytes.byteslice(offset, bytes.bytesize - offset))
+          raise IOError, 'serial write made no progress' unless count && count.positive?
+
+          offset += count
+        end
+        serial_conn.flush
+      end
       sleep 0.05
       bytes.bytesize
     rescue StandardError => e
@@ -179,7 +194,7 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
-    # Meshtastic::SerialInterface.send_to_radio(
+    # Meshtastic::Serial.send_to_radio(
     #   serial_obj: 'required - serial_obj returned from #connect method',
     #   to_radio:   'required - Meshtastic::ToRadio OR already-serialized String'
     # )
@@ -213,7 +228,7 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
-    # serial_obj = Meshtastic::SerialInterface.connect(
+    # serial_obj = Meshtastic::Serial.connect(
     #   block_dev: 'optional - serial block device path (defaults to /dev/ttyUSB0)',
     #   baud: 'optional - (defaults to 115200)',
     #   data_bits: 'optional - (defaults to 8)',
@@ -252,6 +267,7 @@ module Meshtastic
         serial_conn: serial_conn,
         block_dev: block_dev,
         baud: baud,
+        tx_mutex: Mutex.new,
         my_info: nil,
         my_node_num: nil,
         metadata: nil
@@ -262,6 +278,7 @@ module Meshtastic
         serial_obj: serial_obj,
         debug_out: debug_out
       )
+      @last_serial_obj = serial_obj
 
       # Wake / resync the device's framing state-machine.
       wake_up_device(serial_obj: serial_obj)
@@ -269,6 +286,7 @@ module Meshtastic
       if want_config
         mui = Meshtastic::MeshInterface.new
         to_radio_bytes = mui.start_config
+        serial_obj[:config_id] = mui.config_id
         send_to_radio(serial_obj: serial_obj, to_radio: to_radio_bytes)
       end
 
@@ -276,6 +294,20 @@ module Meshtastic
     rescue StandardError => e
       disconnect(serial_obj: serial_obj) unless serial_obj.nil?
       raise e
+    end
+
+    # Wait for the requested configuration without consuming application messages.
+    # Raises Timeout::Error if the firmware does not complete the handshake.
+    public_class_method def self.wait_for_config(opts = {})
+      serial_obj = opts[:serial_obj]
+      raise ArgumentError, 'serial_obj with want_config enabled is required' unless serial_obj && serial_obj[:config_id]
+
+      serial_obj[:config_queue].pop(timeout: opts.fetch(:timeout, 10))
+      raise serial_obj[:rx_error] if serial_obj[:rx_error]
+      raise IOError, 'serial connection closed' if serial_obj[:closing]
+      raise Timeout::Error, "No configuration response from #{serial_obj[:block_dev]}" unless serial_obj[:config_complete]
+
+      serial_obj
     end
 
     # Supported Method Parameters::
@@ -294,30 +326,28 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
-    # stdout_data = Meshtastic::SerialInterface.dump_stdout_data(
+    # stdout_data = Meshtastic::Serial.dump_stdout_data(
     #   type: 'required - :proto or :console'
     # )
-    public_class_method def self.dump_stdout_data(opts = {})
+    public_class_method def self.dump_stdout_data(opts = {}, &)
       type = opts[:type]
       valid_types = %i[proto console]
       raise "ERROR: Invalid type: #{type}. Supported types are :proto or :console" unless valid_types.include?(type)
 
-      @rx_mutex.synchronize do
-        if block_given?
-          if type == :proto
-            @proto_data.each { |proto_hash| yield proto_hash }
-          else
-            @console_data.join.split("\n").each { |line| yield line.force_encoding('UTF-8') }
-          end
-          nil
-        else
-          type == :proto ? @proto_data.dup : @console_data.join
-        end
+      serial_obj = opts[:serial_obj] || @last_serial_obj
+      raise 'ERROR: call connect first' unless serial_obj
+
+      data = serial_obj[:rx_mutex].synchronize do
+        type == :proto ? serial_obj[:proto_data].dup : serial_obj[:console_data].join
       end
+      return data unless block_given?
+
+      (type == :proto ? data : data.split("\n")).each(&)
+      nil
     end
 
     # Supported Method Parameters::
-    # Meshtastic::SerialInterface.flush_data(
+    # Meshtastic::Serial.flush_data(
     #   type: 'required - :proto or :console'
     # )
     public_class_method def self.flush_data(opts = {}) # rubocop:disable Naming/PredicateMethod
@@ -325,9 +355,12 @@ module Meshtastic
       valid_types = %i[proto console]
       raise "ERROR: Invalid type: #{type}. Supported types are :proto or :console" unless valid_types.include?(type)
 
-      @rx_mutex.synchronize do
-        @console_data.clear if type == :console
-        @proto_data.clear if type == :proto
+      serial_obj = opts[:serial_obj] || @last_serial_obj
+      raise 'ERROR: call connect first' unless serial_obj
+
+      serial_obj[:rx_mutex].synchronize do
+        serial_obj[:console_data].clear if type == :console
+        serial_obj[:proto_data].clear if type == :proto
       end
       true
     end
@@ -336,34 +369,40 @@ module Meshtastic
     public_class_method def self.drain_from_radio(opts = {})
       max = opts[:max] ||= 256
       msgs = []
-      return msgs unless @from_radio_queue
+      serial_obj = opts[:serial_obj] || @last_serial_obj
+      queue = serial_obj && serial_obj[:from_radio_queue]
+      return msgs unless queue
 
       max.times do
-          msgs << @from_radio_queue.pop(true)
+        message = queue.pop(true)
+        break unless message
+
+        msgs << message
       rescue ThreadError
-          break
+        break
       end
       msgs
     end
 
     # Block until a FromRadio arrives or timeout (seconds). Returns FromRadio or nil.
     public_class_method def self.recv_from_radio(opts = {})
-      timeout = opts[:timeout] ||= 5
-      raise 'ERROR: RX queue not initialised — call connect first' unless @from_radio_queue
+      timeout = opts.fetch(:timeout, 5)
+      serial_obj = opts[:serial_obj] || @last_serial_obj
+      queue = serial_obj && serial_obj[:from_radio_queue]
+      raise 'ERROR: RX queue not initialised — call connect first' unless queue
 
-      if timeout.nil? || timeout.negative?
-        @from_radio_queue.pop
-      else
-        begin
-          Timeout.timeout(timeout) { @from_radio_queue.pop }
-        rescue Timeout::Error
-          nil
-        end
-      end
+      message = if timeout.nil? || timeout.negative?
+                  queue.pop
+                else
+                  queue.pop(timeout: timeout)
+                end
+      raise serial_obj[:rx_error] if message.nil? && serial_obj[:rx_error]
+
+      message
     end
 
     # Supported Method Parameters::
-    # Meshtastic::SerialInterface.monitor_stdout(
+    # Meshtastic::Serial.monitor_stdout(
     #   serial_obj: 'required - serial_obj returned from #connect method',
     #   type: 'required - :proto or :console',
     #   refresh: 'optional - refresh interval (default: 3)',
@@ -384,15 +423,15 @@ module Meshtastic
         exclude_arr = exclude.to_s.split(',').map(&:strip)
         include_arr = include.to_s.split(',').map(&:strip)
 
-        dump_stdout_data(type: type) do |data|
+        dump_stdout_data(serial_obj: serial_obj, type: type) do |data|
           data_s = data.is_a?(Hash) ? data.inspect : data.to_s
-          disp = !exclude_arr.intersect?(data_s) && (
-                   include_arr.empty? ||
-                   include_arr.all? { |inc| data_s.include?(inc) }
-                 )
+          disp = exclude_arr.none? { |exc| data_s.include?(exc) } && (
+            include_arr.empty? ||
+            include_arr.all? { |inc| data_s.include?(inc) }
+          )
           puts data_s if disp
         end
-        flush_data(type: type)
+        flush_data(serial_obj: serial_obj, type: type)
         sleep refresh
       end
     rescue Interrupt
@@ -457,7 +496,7 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
-    # Meshtastic::SerialInterface.subscribe(
+    # Meshtastic::Serial.subscribe(
     #   serial_obj: 'required - serial_obj returned from #connect method',
     #   psks: 'optional - hash of :channel_id => psk (default: { LongFast: "AQ==" })',
     #   exclude: 'optional - comma-delimited substrings to hide',
@@ -491,12 +530,9 @@ module Meshtastic
       puts 'Subscribing to serial FromRadio stream...'
 
       loop do
-        from_radio =
-          if timeout
-            recv_from_radio(timeout: timeout)
-          else
-            @from_radio_queue.pop
-          end
+        from_radio = recv_from_radio(serial_obj: serial_obj, timeout: timeout)
+        break if from_radio.nil? && serial_obj[:from_radio_queue].closed?
+
         next if from_radio.nil?
 
         begin
@@ -536,7 +572,7 @@ module Meshtastic
           flat_message = flat_source.values.join(' ')
           flat_message = "#{flat_message} #{message.values.join(' ')}" if message.is_a?(Hash)
 
-          disp = !exclude_arr.intersect?(flat_message) &&
+          disp = exclude_arr.none? { |exc| flat_message.include?(exc) } &&
                  include_arr.all? { |inc| flat_message.include?(inc) }
 
           if disp
@@ -562,9 +598,9 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
-    # Meshtastic::SerialInterface.send_text(
+    # Meshtastic::Serial.send_text(
     #   serial_obj: 'required - serial_obj returned from #connect method',
-    #   from: 'optional - From ID (Default: local my_node_num or "!00000b0b")',
+    #   from: 'optional - From ID (Default: local my_node_num or 0 for firmware-assigned)',
     #   to: 'optional - Destination ID (Default: "!ffffffff")',
     #   channel: 'optional - channel index (Default: 0)',
     #   text: 'optional - Text Message (Default: SYN)',
@@ -581,29 +617,22 @@ module Meshtastic
       opts[:via] = :radio
       opts[:channel] ||= 0
 
-      if opts[:from].nil?
-        opts[:from] =
-          if serial_obj[:my_node_num]
-            "!#{serial_obj[:my_node_num].to_s(16)}"
-          else
-            '!00000b0b'
-          end
-      end
+      opts[:from] = serial_obj[:my_node_num] || 0 if opts[:from].nil?
 
       # Device performs channel encryption for serial ToRadio packets.
-      # Pass empty psks so MeshInterface leaves the payload in :decoded form.
+      # Pass nil psks so MeshInterface leaves the payload in :decoded form.
       opts[:psks] = nil
+      opts[:text] = opts.fetch(:text, 'SYN').to_s
+      max_len = Meshtastic::Constants::DATA_PAYLOAD_LEN
+      raise ArgumentError, "ERROR: Text Length > #{max_len} Bytes" if opts[:text].bytesize > max_len
 
       mui = Meshtastic::MeshInterface.new
       protobuf = mui.send_text(opts)
       send_to_radio(serial_obj: serial_obj, to_radio: protobuf)
-    rescue StandardError => e
-      disconnect(serial_obj: serial_obj) unless serial_obj.nil?
-      raise e
     end
 
     # Supported Method Parameters::
-    # Meshtastic::SerialInterface.send_data(
+    # Meshtastic::Serial.send_data(
     #   serial_obj: 'required - serial_obj returned from #connect method',
     #   ...same kwargs as MeshInterface#send_data (via forced to :radio)
     # )
@@ -615,25 +644,24 @@ module Meshtastic
       opts[:via] = :radio
       opts[:channel] ||= 0
       opts[:psks] = nil
-      opts[:from] = "!#{serial_obj[:my_node_num].to_s(16)}" if opts[:from].nil? && serial_obj[:my_node_num]
+      opts[:from] = serial_obj[:my_node_num] || 0 if opts[:from].nil?
 
       mui = Meshtastic::MeshInterface.new
       protobuf = mui.send_data(opts)
       send_to_radio(serial_obj: serial_obj, to_radio: protobuf)
-    rescue StandardError => e
-      disconnect(serial_obj: serial_obj) unless serial_obj.nil?
-      raise e
     end
 
     # Supported Method Parameters::
-    # serial_obj = Meshtastic::SerialInterface.disconnect(
+    # serial_obj = Meshtastic::Serial.disconnect(
     #   serial_obj: 'required - serial_obj returned from #connect method'
     # )
     public_class_method def self.disconnect(opts = {})
       serial_obj = opts[:serial_obj]
-      return nil unless serial_obj
+      return nil if serial_obj.nil? || serial_obj[:closing]
 
-      @want_exit = true
+      serial_obj[:closing] = true
+      serial_obj[:from_radio_queue]&.close
+      serial_obj[:config_queue]&.close
 
       # Ask device to release the link (best-effort).
       begin
@@ -677,7 +705,9 @@ module Meshtastic
     # Display Usage for this Module
 
     public_class_method def self.help
-      puts "USAGE:
+      puts "Send and receive Meshtastic messages over a framed serial (USB/UART) connection.
+
+      USAGE:
         serial_obj = #{self}.connect(
           block_dev: 'optional - serial block device path (defaults to /dev/ttyUSB0)',
           baud: 'optional - (defaults to 115200)',
@@ -686,6 +716,11 @@ module Meshtastic
           parity: 'optional - :even|:odd|:none (defaults to :none)',
           debug_out: 'optional - IO receiving non-protobuf debug console bytes',
           want_config: 'optional - request full node DB after connect (default: true)'
+        )
+
+        #{self}.wait_for_config(
+          serial_obj: 'required - serial_obj connected with want_config: true',
+          timeout: 'optional - seconds to await configuration (default: 10; raises Timeout::Error)'
         )
 
         #{self}.wake_up_device(
@@ -703,16 +738,19 @@ module Meshtastic
         )
 
         from_radio = #{self}.recv_from_radio(
-          timeout: 'optional - seconds (default: 5; nil = block forever)'
+          serial_obj: 'optional - serial_obj (default: most recently opened connection)',
+          timeout: 'optional - seconds (default: 5; 0 = poll; nil = block forever)'
         )
 
-        msgs = #{self}.drain_from_radio(max: 256)
+        msgs = #{self}.drain_from_radio(serial_obj: serial_obj, max: 256)
 
         stdout_data = #{self}.dump_stdout_data(
+          serial_obj: 'optional - serial_obj (default: most recently opened connection)',
           type: 'required - :proto or :console'
         )
 
         #{self}.flush_data(
+          serial_obj: 'optional - serial_obj (default: most recently opened connection)',
           type: 'required - :console or :proto'
         )
 
@@ -736,7 +774,7 @@ module Meshtastic
 
         #{self}.send_text(
           serial_obj: 'required - serial_obj returned from #connect method',
-          from: 'optional - From ID (Default: local my_node_num or \"!00000b0b\")',
+          from: 'optional - From ID (Default: local my_node_num or 0 for firmware-assigned)',
           to: 'optional - Destination ID (Default: \"!ffffffff\")',
           channel: 'optional - channel index (Default: 0)',
           text: 'optional - Text Message (Default: SYN)',

@@ -213,14 +213,8 @@ module Meshtastic
           if message.is_a?(Hash)
             flat_message = message.values.join(' ')
 
-            disp = false
-            # disp = true if exclude_arr.none? { |exclude| flat_message.include?(exclude) } && (
-            #                  include_arr.first == message[:id] ||
-            #                  include_arr.all? { |include| flat_message.include?(include) }
-            #                )
-
-            disp = true if !exclude_arr.intersect?(flat_message) &&
-                           include_arr.all? { |include| flat_message.include?(include) }
+            disp = exclude_arr.none? { |exc| flat_message.include?(exc) } &&
+                   include_arr.all? { |inc| flat_message.include?(inc) }
 
             if disp
               if block_given?
@@ -276,33 +270,12 @@ module Meshtastic
       opts[:topic] = absolute_topic
       opts[:via] = :mqtt
 
-      # TODO: Implement chunked message to deal with large messages
-      text = opts[:text].to_s
-      max_bytes = 231
-      mui = Meshtastic::MeshInterface.new
+      text = opts.fetch(:text, 'SYN').to_s
+      max_len = Meshtastic::Constants::DATA_PAYLOAD_LEN
+      raise ArgumentError, "ERROR: Text Length > #{max_len} Bytes" if text.bytesize > max_len
 
-      if text.bytesize > max_bytes
-        total_chunks = (text.bytesize.to_f / max_bytes).ceil
-        total_chunks.times do |i|
-          chunk_num = i + 1
-          chunk_prefix = " (#{chunk_num} of #{total_chunks})\n"
-          chunk_prefix_len = chunk_prefix.bytesize
-          start_index = i * (max_bytes - chunk_prefix_len)
-          end_index = (start_index + (max_bytes - chunk_prefix_len)) - 1
-          chunk = "#{chunk_prefix} #{text.byteslice(start_index..end_index)}"
-          # This addresses a weird bug in the protocal if the first byte
-          # is an h or H followed by a single byte, which returns
-          # {} or {bitfiled: INT}
-          opts[:text] = chunk
-          protobuf_chunk = mui.send_text(opts)
-          mqtt_obj.publish(absolute_topic, protobuf_chunk)
-          sleep 0.3
-        end
-      else
-        opts[:text] = " #{text}"
-        protobuf_text = mui.send_text(opts)
-        mqtt_obj.publish(absolute_topic, protobuf_text)
-      end
+      opts[:text] = text
+      mqtt_obj.publish(absolute_topic, Meshtastic::MeshInterface.new.send_text(opts))
     rescue StandardError => e
       raise e
     end

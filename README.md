@@ -24,7 +24,7 @@ If bundler is not being used to manage dependencies, install the gem by executin
 
 ## Usage
 
-The primary interaction modules today are `Meshtastic::MQTT` (broker) and `Meshtastic::SerialInterface` (USB/UART). Examples for each follow.
+The primary interaction modules today are `Meshtastic::MQTT` (broker), `Meshtastic::Serial` (USB/UART), and `Meshtastic::Bluetooth` (BLE via Linux BlueZ). Examples for each follow.
 
 ### MQTT
 
@@ -101,111 +101,108 @@ You should see something like this:
 
 Note where is says `channel: 93`.  This is the `channel` value required to send messages in this particular example.
 
-### Serial Interface
+### Serial and Bluetooth (send / receive)
 
-Talk directly to a Meshtastic node over USB/UART (`/dev/ttyUSB*`, `/dev/ttyACM*`). Unlike MQTT, the radio owns channel crypto for serial: payloads are sent *decoded* and the device encrypts with its configured channel key.
+`Meshtastic::Serial` (USB/UART) and `Meshtastic::Bluetooth` (Linux BLE via BlueZ) talk to a local radio using the same client API. The radio encrypts with its configured channel keys. Payloads are sent decoded; `channel:` is the index on the device, not an MQTT channel hash.
 
-To inspect available methods and open a serial session:
+Do not open Serial and Bluetooth to the same radio at once. Disconnect when finished (`ensure` is the reliable pattern). `send_text` / `send_data` report bytes written, not mesh delivery. `want_ack: true` requests a `ROUTING_APP` acknowledgment (`error_reason: NONE` means the local radio accepted the route). Incoming text is a UTF-8 string under `message[:packet][:decoded][:payload]`.
 
-```ruby
-require 'meshtastic'
-Meshtastic::SerialInterface.help
-serial_obj = Meshtastic::SerialInterface.connect(
-  block_dev: '/dev/ttyUSB0', # or /dev/ttyACM0
-  baud: 115_200
-)
-puts serial_obj.inspect
-```
+Call `wait_for_config` before using `my_node_num` or sending. It raises `Timeout::Error` if the firmware never completes the handshake. Opening a port or pairing is not the same as a completed handshake.
 
-This code will dump every FromRadio packet (blocks until CTRL+C):
+#### Serial (`Meshtastic::Serial`)
+
+Use the device’s USB CDC port (`/dev/ttyACM*` or `/dev/ttyUSB*`). Enable Radio Configuration → Security → Serial Console (`security.serial_enabled`). That is not Module Configuration → Serial (`TEXTMSG` / `PROTO` on GPIO). Keep “Override Console Serial Port” off.
 
 ```ruby
 require 'meshtastic'
-serial_obj = Meshtastic::SerialInterface.connect(
-  block_dev: '/dev/ttyUSB0',
-  baud: 115_200
-)
-Meshtastic::SerialInterface.subscribe(
-  serial_obj: serial_obj
-) do |message|
-  puts message.inspect
+
+serial_obj = nil
+begin
+  serial_obj = Meshtastic::Serial.connect(block_dev: '/dev/ttyACM2', baud: 115_200)
+  Meshtastic::Serial.wait_for_config(serial_obj: serial_obj, timeout: 10)
+  puts "local node: !#{serial_obj[:my_node_num].to_s(16)}"
+
+  # Direct message, or to: '!ffffffff' for the shared channel.
+  Meshtastic::Serial.send_text(
+    serial_obj: serial_obj,
+    to: '!83726fb1',
+    channel: 0,
+    text: 'Hello over serial!',
+    want_ack: true
+  )
+
+  Meshtastic::Serial.subscribe(
+    serial_obj: serial_obj,
+    include: 'TEXT_MESSAGE_APP'
+  ) do |message|
+    packet = message[:packet]
+    puts "#{packet[:node_id_from]}: #{packet.dig(:decoded, :payload)}"
+  end
+ensure
+  Meshtastic::Serial.disconnect(serial_obj: serial_obj)
 end
 ```
 
-Filter with `include` / `exclude` (comma-delimited substrings), same idea as MQTT:
+Drive the loop yourself with `recv_from_radio(serial_obj:, timeout:)` (`0` polls, `nil` blocks) or `drain_from_radio`. A closed empty queue returns `nil`; an unplugged device raises `IOError`. If `wait_for_config` times out, the USB path is up but the Stream API is not (wrong port, Serial Console disabled, or firmware not responding).
+
+#### Bluetooth (`Meshtastic::Bluetooth`)
+
+Linux only (BlueZ + `ruby-dbus`). Connect with a BLE address (`AA:BB:CC:DD:EE:FF`), not a mesh id (`!03d52a07`). Pair first; this gem does not guess a PIN. BLE writes unframed ToRadio protobufs (no UART `0x94 0xC3` header).
+
+Scan:
 
 ```ruby
 require 'meshtastic'
-serial_obj = Meshtastic::SerialInterface.connect(block_dev: '/dev/ttyUSB0')
-Meshtastic::SerialInterface.subscribe(
-  serial_obj: serial_obj,
-  include: 'TEXT_MESSAGE_APP',
-  exclude: 'TELEMETRY_APP'
-) do |message|
-  puts message.inspect
+Meshtastic::Bluetooth.scan(adapter: 'hci0', timeout: 5)
+# => [{ address: 'E8:EE:03:D5:2A:07', name: '📺_2a07', paired: true }, ...]
+```
+
+Pair while discovery is running. Screen devices typically show a random 6-digit PIN:
+
+```text
+bluetoothctl
+agent KeyboardDisplay
+default-agent
+scan on
+pair E8:EE:03:D5:2A:07
+trust E8:EE:03:D5:2A:07
+scan off
+quit
+```
+
+`Failed to pair: AuthenticationFailed` means the agent never got the PIN. `Device … not available` means scan first; the advertisement dropped.
+
+Send and receive (same options as Serial, `bluetooth_obj:` instead of `serial_obj:`):
+
+```ruby
+require 'meshtastic'
+
+bluetooth_obj = nil
+begin
+  bluetooth_obj = Meshtastic::Bluetooth.connect(address: 'E8:EE:03:D5:2A:07')
+  Meshtastic::Bluetooth.wait_for_config(bluetooth_obj: bluetooth_obj, timeout: 30)
+
+  Meshtastic::Bluetooth.send_text(
+    bluetooth_obj: bluetooth_obj,
+    to: '!83726fb1',
+    channel: 0,
+    text: 'Hello over BLE!',
+    want_ack: true
+  )
+
+  Meshtastic::Bluetooth.subscribe(
+    bluetooth_obj: bluetooth_obj,
+    include: 'TEXT_MESSAGE_APP'
+  ) do |message|
+    packet = message[:packet]
+    puts "#{packet[:node_id_from]}: #{packet.dig(:decoded, :payload)}"
+  end
+ensure
+  Meshtastic::Bluetooth.disconnect(bluetooth_obj: bluetooth_obj)
 end
 ```
 
-Sending a message over serial:
-
-```ruby
-require 'meshtastic'
-serial_obj = Meshtastic::SerialInterface.connect(
-  block_dev: '/dev/ttyUSB0',
-  baud: 115_200
-)
-Meshtastic::SerialInterface.send_text(
-  serial_obj: serial_obj,
-  to: '!ffffffff',   # broadcast; or a node id like '!f33ddad5'
-  channel: 0,        # primary channel index on the radio
-  text: 'Hello over serial!'
-)
-Meshtastic::SerialInterface.disconnect(serial_obj: serial_obj)
-```
-
-A typical end-to-end send + receive session looks like this (connect once, send, then subscribe):
-
-```ruby
-require 'meshtastic'
-
-serial_obj = Meshtastic::SerialInterface.connect(
-  block_dev: '/dev/ttyUSB0',
-  baud: 115_200
-)
-
-# Optional: give the device a moment to finish want_config / my_info
-sleep 2
-puts "local node: !#{serial_obj[:my_node_num].to_s(16)}" if serial_obj[:my_node_num]
-
-Meshtastic::SerialInterface.send_text(
-  serial_obj: serial_obj,
-  to: '!ffffffff',
-  channel: 0,
-  text: 'Hello over serial!'
-)
-
-# Blocks; CTRL+C disconnects cleanly
-Meshtastic::SerialInterface.subscribe(serial_obj: serial_obj) do |message|
-  puts message.inspect
-end
-```
-
-Non-blocking receive helpers (useful when you drive the loop yourself):
-
-```ruby
-# Pop one framed FromRadio (or nil on timeout)
-fr = Meshtastic::SerialInterface.recv_from_radio(timeout: 2)
-puts fr&.to_h
-
-# Drain whatever is already queued
-Meshtastic::SerialInterface.drain_from_radio.each { |fr| puts fr.to_h }
-
-# Debug console / proto dumps collected by the RX thread
-puts Meshtastic::SerialInterface.dump_stdout_data(type: :console)
-puts Meshtastic::SerialInterface.dump_stdout_data(type: :proto).size
-```
-
-> **Note:** Serial path leaves mesh packets *decoded* and lets the radio encrypt with its configured channel key. The MQTT path still pre-encrypts with the PSK you supply via `psks:`. Channel index (`channel:`) on serial is the index configured on the *device*, not the MQTT channel hash.
+Disconnect the phone’s Meshtastic BLE session while Linux is connected. After an aborted reconnect (`le-connection-abort-by-local`), `bluetoothctl disconnect <addr>` and wait a couple of seconds before `connect` again. Config dumps over BLE can take longer than serial; 30 seconds is a reasonable `wait_for_config` timeout.
 
 ## Contributing
 

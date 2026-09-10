@@ -22,13 +22,6 @@ Layout/EmptyLineAfterMagicComment:
 Layout/EmptyLines:
   Enabled: false
 
-# Offense count: 2
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: Width, EnforcedStyleAlignWith, AllowedPatterns.
-# SupportedStylesAlignWith: start_of_line, relative_to_receiver
-Layout/IndentationWidth:
-  Exclude:
-    - 'lib/meshtastic/serial_interface.rb'
 
 # Offense count: 26
 # This cop supports safe autocorrection (--autocorrect).
@@ -37,14 +30,6 @@ Layout/IndentationWidth:
 Layout/LineLength:
   Enabled: false
 
-# Offense count: 1
-# This cop supports safe autocorrection (--autocorrect).
-# Configuration parameters: EnforcedStyle, EnforcedStyleForEmptyBraces.
-# SupportedStyles: space, no_space
-# SupportedStylesForEmptyBraces: space, no_space
-Layout/SpaceBeforeBlockBraces:
-  Exclude:
-    - 'lib/meshtastic/serial_interface.rb'
 
 # Offense count: 49
 # Configuration parameters: AllowComments, AllowEmptyLambdas.
@@ -63,7 +48,6 @@ Lint/UnusedMethodArgument:
 # This cop supports safe autocorrection (--autocorrect).
 Lint/UselessAssignment:
   Exclude:
-    - 'lib/meshtastic/serial_interface.rb'
     - 'lib/meshtastic/stream_interface.rb'
     - 'meshtastic.gemspec'
 
@@ -86,11 +70,6 @@ Style/CommentAnnotation:
 Style/Documentation:
   Enabled: false
 
-# Offense count: 1
-# This cop supports safe autocorrection (--autocorrect).
-Style/ExplicitBlockArgument:
-  Exclude:
-    - 'lib/meshtastic/serial_interface.rb'
 
 # Offense count: 1
 # This cop supports safe autocorrection (--autocorrect).
