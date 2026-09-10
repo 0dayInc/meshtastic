@@ -28,8 +28,9 @@ Do not open Serial and Bluetooth to the same radio at once. Always `disconnect` 
 ## Feature modules
 
 - [Meshtastic::Admin](admin.md)
-- [Meshtastic::Channel](channel.md)
-- [Meshtastic::Config](config.md)
+- [Meshtastic::Admin::Channel](admin-channel.md)
+- [Meshtastic::Admin::Config](admin-config.md)
+- [Meshtastic::Admin::Firmware](admin-firmware.md)
 - [Meshtastic::ModuleConfig](module-config.md)
 - [Meshtastic::Position](position.md)
 - [Meshtastic::Telemetry](telemetry.md)

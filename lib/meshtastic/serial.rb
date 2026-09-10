@@ -16,11 +16,11 @@ module Meshtastic
   module Serial # rubocop:disable Metrics/ModuleLength
     @last_serial_obj = nil
 
-    module_function
 
     # ---- low-level IO helpers ------------------------------------------------
 
-    def self.clear_hupcl(block_dev)
+    private_class_method def self.clear_hupcl(opts = {})
+      block_dev = opts[:block_dev]
       # Prevent device reboot on open by clearing HUPCL (same as Python pyserial path).
       return unless defined?(Termios)
 
@@ -34,7 +34,6 @@ module Meshtastic
       # Best-effort — uart.open will still work without this.
       nil
     end
-    private_class_method :clear_hupcl
 
     # Supported Method Parameters::
     # proto_thread = init_rx_thread(
@@ -74,7 +73,7 @@ module Meshtastic
               # looking for START1
               unless c == Meshtastic::START1
                 rx_buf = empty.dup
-                append_console_byte(chunk, debug_out, serial_obj)
+                append_console_byte(chunk: chunk, debug_out: debug_out, serial_obj: serial_obj)
               end
             elsif ptr == 1
               # looking for START2
@@ -110,7 +109,10 @@ module Meshtastic
     end
 
 
-    private_class_method def self.append_console_byte(chunk, debug_out, serial_obj)
+    private_class_method def self.append_console_byte(opts = {})
+      chunk = opts[:chunk]
+      debug_out = opts[:debug_out]
+      serial_obj = opts[:serial_obj]
       if debug_out
         begin
           debug_out.write(chunk.force_encoding('UTF-8'))
@@ -259,7 +261,7 @@ module Meshtastic
 
       mode = "#{data_bits}#{parity_char}#{stop_bits}"
 
-      clear_hupcl(block_dev)
+      clear_hupcl(block_dev: block_dev)
 
       serial_conn = UART.open(block_dev, baud, mode)
 
@@ -329,7 +331,7 @@ module Meshtastic
     # stdout_data = Meshtastic::Serial.dump_stdout_data(
     #   type: 'required - :proto or :console'
     # )
-    public_class_method def self.dump_stdout_data(opts = {}, &)
+    public_class_method def self.dump_stdout_data(opts = {})
       type = opts[:type]
       valid_types = %i[proto console]
       raise "ERROR: Invalid type: #{type}. Supported types are :proto or :console" unless valid_types.include?(type)
@@ -342,7 +344,7 @@ module Meshtastic
       end
       return data unless block_given?
 
-      (type == :proto ? data : data.split("\n")).each(&)
+      (type == :proto ? data : data.split("\n")).each { |row| yield row } # rubocop:disable Style/ExplicitBlockArgument
       nil
     end
 
@@ -705,100 +707,109 @@ module Meshtastic
     # Display Usage for this Module
 
     public_class_method def self.help
-      puts "Send and receive Meshtastic messages over a framed serial (USB/UART) connection.
-
-      USAGE:
-        serial_obj = #{self}.connect(
-          block_dev: 'optional - serial block device path (defaults to /dev/ttyUSB0)',
-          baud: 'optional - (defaults to 115200)',
-          data_bits: 'optional - (defaults to 8)',
-          stop_bits: 'optional - (defaults to 1)',
-          parity: 'optional - :even|:odd|:none (defaults to :none)',
-          debug_out: 'optional - IO receiving non-protobuf debug console bytes',
-          want_config: 'optional - request full node DB after connect (default: true)'
-        )
-
-        #{self}.wait_for_config(
-          serial_obj: 'required - serial_obj connected with want_config: true',
-          timeout: 'optional - seconds to await configuration (default: 10; raises Timeout::Error)'
-        )
-
-        #{self}.wake_up_device(
-          serial_obj: 'required - serial_obj returned from #connect method'
-        )
-
+      puts "        USAGE:
+        # Run the request class method for this module.
         #{self}.request(
-          serial_obj: 'required serial_obj returned from #connect method',
-          payload: 'required - array of bytes OR string to write to serial device'
+          serial_obj: 'optional - value for serial_obj passed into request',
+          payload: 'optional - value for payload passed into request'
         )
 
+        # Run the send_to_radio class method for this module.
         #{self}.send_to_radio(
-          serial_obj: 'required - serial_obj returned from #connect method',
-          to_radio: 'required - Meshtastic::ToRadio OR serialized String'
+          serial_obj: 'optional - value for serial_obj passed into send_to_radio',
+          to_radio: 'optional - value for to_radio passed into send_to_radio'
         )
 
-        from_radio = #{self}.recv_from_radio(
-          serial_obj: 'optional - serial_obj (default: most recently opened connection)',
-          timeout: 'optional - seconds (default: 5; 0 = poll; nil = block forever)'
+        # Run the connect class method for this module.
+        #{self}.connect(
+          block_dev: 'optional - value for block_dev passed into connect',
+          baud: 'optional - value for baud passed into connect',
+          data_bits: 'optional - value for data_bits passed into connect',
+          stop_bits: 'optional - value for stop_bits passed into connect',
+          parity: 'optional - value for parity passed into connect',
+          debug_out: 'optional - value for debug_out passed into connect'
         )
 
-        msgs = #{self}.drain_from_radio(serial_obj: serial_obj, max: 256)
-
-        stdout_data = #{self}.dump_stdout_data(
-          serial_obj: 'optional - serial_obj (default: most recently opened connection)',
-          type: 'required - :proto or :console'
+        # Run the wait_for_config class method for this module.
+        #{self}.wait_for_config(
+          serial_obj: 'optional - value for serial_obj passed into wait_for_config'
         )
 
+        # Run the wake_up_device class method for this module.
+        #{self}.wake_up_device(
+          serial_obj: 'optional - value for serial_obj passed into wake_up_device'
+        )
+
+        # Run the dump_stdout_data class method for this module.
+        #{self}.dump_stdout_data(
+          type: 'optional - value for type passed into dump_stdout_data',
+          serial_obj: 'optional - value for serial_obj passed into dump_stdout_data'
+        )
+
+        # Run the flush_data class method for this module.
         #{self}.flush_data(
-          serial_obj: 'optional - serial_obj (default: most recently opened connection)',
-          type: 'required - :console or :proto'
+          type: 'optional - value for type passed into flush_data',
+          serial_obj: 'optional - value for serial_obj passed into flush_data'
         )
 
+        # Run the drain_from_radio class method for this module.
+        #{self}.drain_from_radio(
+          max: 'optional - value for max passed into drain_from_radio',
+          serial_obj: 'optional - value for serial_obj passed into drain_from_radio'
+        )
+
+        # Run the recv_from_radio class method for this module.
+        #{self}.recv_from_radio(
+          serial_obj: 'optional - value for serial_obj passed into recv_from_radio'
+        )
+
+        # Run the monitor_stdout class method for this module.
         #{self}.monitor_stdout(
-          serial_obj: 'required - serial_obj returned from #connect method',
-          type: 'required - :proto or :console',
-          refresh: 'optional - refresh interval (default: 3)',
-          include: 'optional - comma-delimited string(s) to include in message',
-          exclude: 'optional - comma-delimited string(s) to exclude in message'
+          serial_obj: 'optional - value for serial_obj passed into monitor_stdout',
+          type: 'optional - value for type passed into monitor_stdout',
+          refresh: 'optional - value for refresh passed into monitor_stdout',
+          include: 'optional - value for include passed into monitor_stdout',
+          exclude: 'optional - value for exclude passed into monitor_stdout'
         )
 
+        # Run the subscribe class method for this module.
         #{self}.subscribe(
-          serial_obj: 'required - serial_obj returned from #connect method',
-          psks: 'optional - hash of :channel_id => psk (default: { LongFast: \"AQ==\" })',
-          exclude: 'optional - comma-delimited string(s) to exclude',
-          include: 'optional - comma-delimited string(s) to include',
-          gps_metadata: 'optional - include GPS metadata (default: false)',
-          include_raw: 'optional - include raw packet bytes (default: false)',
-          timeout: 'optional - seconds per pop (default: nil = forever)'
+          serial_obj: 'optional - value for serial_obj passed into subscribe',
+          psks: 'optional - value for psks passed into subscribe',
+          exclude: 'optional - value for exclude passed into subscribe',
+          include: 'optional - value for include passed into subscribe',
+          gps_metadata: 'optional - value for gps_metadata passed into subscribe',
+          include_raw: 'optional - value for include_raw passed into subscribe',
+          timeout: 'optional - value for timeout passed into subscribe'
         )
 
+        # Run the send_text class method for this module.
         #{self}.send_text(
-          serial_obj: 'required - serial_obj returned from #connect method',
-          from: 'optional - From ID (Default: local my_node_num or 0 for firmware-assigned)',
-          to: 'optional - Destination ID (Default: \"!ffffffff\")',
-          channel: 'optional - channel index (Default: 0)',
-          text: 'optional - Text Message (Default: SYN)',
-          want_ack: 'optional - Want Acknowledgement (Default: false)',
-          want_response: 'optional - Want Response (Default: false)',
-          hop_limit: 'optional - Hop Limit (Default: 3)'
+          serial_obj: 'optional - value for serial_obj passed into send_text',
+          via: 'optional - value for via passed into send_text',
+          channel: 'optional - value for channel passed into send_text',
+          from: 'optional - value for from passed into send_text',
+          psks: 'optional - value for psks passed into send_text',
+          text: 'optional - value for text passed into send_text'
         )
 
+        # Run the send_data class method for this module.
         #{self}.send_data(
-          serial_obj: 'required - serial_obj returned from #connect method',
-          from: 'optional - From ID',
-          to: 'optional - Destination ID (Default: \"!ffffffff\")',
-          channel: 'optional - channel index (Default: 0)',
-          data: 'required - Meshtastic::Data',
-          want_ack: 'optional - Want Acknowledgement (Default: false)',
-          hop_limit: 'optional - Hop Limit (Default: 3)',
-          port_num: 'optional - PortNum (Default: PRIVATE_APP)'
+          serial_obj: 'optional - value for serial_obj passed into send_data',
+          via: 'optional - value for via passed into send_data',
+          channel: 'optional - value for channel passed into send_data',
+          psks: 'optional - value for psks passed into send_data',
+          from: 'optional - value for from passed into send_data'
         )
 
-        serial_obj = #{self}.disconnect(
-          serial_obj: 'required - serial_obj returned from #connect method'
+        # Run the disconnect class method for this module.
+        #{self}.disconnect(
+          serial_obj: 'optional - value for serial_obj passed into disconnect'
         )
 
+        # Run the authors class method for this module.
         #{self}.authors
+
       "
     end
   end

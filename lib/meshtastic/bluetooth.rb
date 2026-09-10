@@ -8,12 +8,12 @@ module Meshtastic
   module Bluetooth
     autoload :BlueZ, 'meshtastic/bluetooth/bluez'
 
-    def self.scan(opts = {})
-      BlueZ.scan(adapter: opts.fetch(:adapter, 'hci0'), timeout: opts.fetch(:timeout, 5))
+    public_class_method def self.scan(opts = {})
+      BlueZ.scan(opts.merge({}))
     end
 
     # Connect to an already paired BLE address (not a mesh node ID).
-    def self.connect(opts = {})
+    public_class_method def self.connect(opts = {})
       connection = BlueZ.new(address: opts[:address], adapter: opts.fetch(:adapter, 'hci0'), timeout: opts.fetch(:timeout, 15))
       connection.connect
       bluetooth_obj = {
@@ -21,7 +21,7 @@ module Meshtastic
         rx_mutex: Mutex.new, from_radio_queue: Queue.new, config_queue: Queue.new,
         proto_data: [], console_data: []
       }
-      bluetooth_obj[:rx_thread] = start_reader(bluetooth_obj)
+      bluetooth_obj[:rx_thread] = start_reader(handle: bluetooth_obj)
       if opts.fetch(:want_config, true)
         mesh = Meshtastic::MeshInterface.new
         bytes = mesh.start_config
@@ -35,7 +35,8 @@ module Meshtastic
       raise
     end
 
-    private_class_method def self.start_reader(handle)
+    private_class_method def self.start_reader(opts = {})
+      handle = opts[:handle]
       Thread.new do
         until handle[:closing]
           bytes = handle[:bluetooth_conn].read
@@ -43,7 +44,7 @@ module Meshtastic
             sleep 0.1
             next
           end
-          receive_bytes(handle, bytes)
+          receive_bytes(handle: handle, bytes: bytes)
         end
       rescue StandardError => e
         handle[:rx_error] = IOError.new("Bluetooth receive failed: #{e.message}") unless handle[:closing]
@@ -53,7 +54,9 @@ module Meshtastic
       end
     end
 
-    private_class_method def self.receive_bytes(handle, bytes)
+    private_class_method def self.receive_bytes(opts = {})
+      handle = opts[:handle]
+      bytes = opts[:bytes]
       message = Meshtastic::FromRadio.decode(bytes)
       if message.my_info
         handle[:my_info] = message.my_info.to_h
@@ -73,14 +76,14 @@ module Meshtastic
       warn "Meshtastic::Bluetooth: failed to decode FromRadio (#{e.message})"
     end
 
-    private_class_method def self.handle_for(opts)
+    private_class_method def self.handle_for(opts = {})
       handle = opts[:bluetooth_obj] || @last_bluetooth_obj
       raise ArgumentError, 'bluetooth_obj is required; call connect first' unless handle
 
       handle
     end
 
-    def self.wait_for_config(opts = {})
+    public_class_method def self.wait_for_config(opts = {})
       handle = handle_for(opts)
       raise ArgumentError, 'connect with want_config: true first' unless handle[:config_id]
 
@@ -92,7 +95,7 @@ module Meshtastic
       handle
     end
 
-    def self.recv_from_radio(opts = {})
+    public_class_method def self.recv_from_radio(opts = {})
       handle = handle_for(opts)
       timeout = opts.fetch(:timeout, 5)
       timeout = nil if timeout&.negative?
@@ -102,7 +105,7 @@ module Meshtastic
       message
     end
 
-    def self.drain_from_radio(opts = {})
+    public_class_method def self.drain_from_radio(opts = {})
       handle = handle_for(opts)
       messages = []
       opts.fetch(:max, 256).times do
@@ -114,16 +117,21 @@ module Meshtastic
       messages
     end
 
-    def self.dump_stdout_data(opts = {}, &)
-      Meshtastic::Serial.dump_stdout_data(opts.merge(serial_obj: handle_for(opts)), &)
+    public_class_method def self.dump_stdout_data(opts = {})
+      merged = opts.merge(serial_obj: handle_for(opts))
+      if block_given?
+        Meshtastic::Serial.dump_stdout_data(merged) { |row| yield row } # rubocop:disable Style/ExplicitBlockArgument
+      else
+        Meshtastic::Serial.dump_stdout_data(merged)
+      end
     end
 
-    def self.flush_data(opts = {})
+    public_class_method def self.flush_data(opts = {})
       Meshtastic::Serial.flush_data(opts.merge(serial_obj: handle_for(opts)))
     end
 
     # Yield the same enriched FromRadio hashes as Serial, without opening a UART.
-    def self.subscribe(opts = {})
+    public_class_method def self.subscribe(opts = {})
       handle = handle_for(opts)
       psks = opts.fetch(:psks, { LongFast: 'AQ==' }).dup
       raise ArgumentError, 'psks must be a hash' unless psks.is_a?(Hash)
@@ -166,7 +174,7 @@ module Meshtastic
     end
 
     # Write one complete serialized ToRadio to GATT. BLE does not use UART headers.
-    def self.send_to_radio(opts = {})
+    public_class_method def self.send_to_radio(opts = {})
       handle = opts[:bluetooth_obj]
       raise ArgumentError, 'bluetooth_obj is required' unless handle
       raise IOError, 'Bluetooth connection closed' if handle[:closing]
@@ -187,7 +195,7 @@ module Meshtastic
       end
     end
 
-    def self.send_text(opts = {})
+    public_class_method def self.send_text(opts = {})
       handle = opts[:bluetooth_obj]
       raise ArgumentError, 'bluetooth_obj is required' unless handle
 
@@ -199,7 +207,7 @@ module Meshtastic
       send_to_radio(bluetooth_obj: handle, to_radio: Meshtastic::MeshInterface.new.send_text(args))
     end
 
-    def self.send_data(opts = {})
+    public_class_method def self.send_data(opts = {})
       handle = opts[:bluetooth_obj]
       raise ArgumentError, 'bluetooth_obj is required' unless handle
       raise ArgumentError, 'data must be Meshtastic::Data' unless opts[:data].is_a?(Meshtastic::Data)
@@ -208,7 +216,7 @@ module Meshtastic
       send_to_radio(bluetooth_obj: handle, to_radio: Meshtastic::MeshInterface.new.send_data(args))
     end
 
-    def self.disconnect(opts = {})
+    public_class_method def self.disconnect(opts = {})
       handle = opts[:bluetooth_obj]
       return unless handle
       return if handle[:closing]
@@ -231,68 +239,71 @@ module Meshtastic
       nil
     end
 
-    def self.authors
+    public_class_method def self.authors
       "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
     end
 
-    def self.help
-      puts "Send and receive Meshtastic messages over Bluetooth Low Energy (Linux BlueZ).
-      BLE writes unframed ToRadio protobufs (no UART START1/START2 header). Pair first with bluetoothctl.
+    public_class_method def self.help
+      puts "        USAGE:
+        # Run the scan class method for this module.
+        #{self}.scan
 
-      USAGE:
-        devices = #{self}.scan(
-          adapter: 'optional - BlueZ adapter (default: hci0)',
-          timeout: 'optional - discovery seconds (default: 5)'
+        # Run the connect class method for this module.
+        #{self}.connect(
+          address: 'optional - value for address passed into connect'
         )
 
-        bluetooth_obj = #{self}.connect(
-          address: 'required - BLE address (AA:BB:CC:DD:EE:FF), not a mesh node ID',
-          adapter: 'optional - BlueZ adapter (default: hci0)',
-          timeout: 'optional - D-Bus/connect seconds (default: 15)',
-          want_config: 'optional - request full node DB after connect (default: true)'
-        )
+        # Run the wait_for_config class method for this module.
+        #{self}.wait_for_config
 
-        #{self}.wait_for_config(
-          bluetooth_obj: 'required - bluetooth_obj connected with want_config: true',
-          timeout: 'optional - seconds to await configuration (default: 10)'
-        )
+        # Run the recv_from_radio class method for this module.
+        #{self}.recv_from_radio
 
-        #{self}.send_to_radio(
-          bluetooth_obj: 'required - bluetooth_obj returned from #connect',
-          to_radio: 'required - Meshtastic::ToRadio OR serialized String'
-        )
+        # Run the drain_from_radio class method for this module.
+        #{self}.drain_from_radio
 
-        from_radio = #{self}.recv_from_radio(
-          bluetooth_obj: 'optional - bluetooth_obj (default: most recently opened connection)',
-          timeout: 'optional - seconds (default: 5; 0 = poll; nil = block forever)'
-        )
+        # Run the dump_stdout_data class method for this module.
+        #{self}.dump_stdout_data
 
-        msgs = #{self}.drain_from_radio(bluetooth_obj: bluetooth_obj, max: 256)
+        # Run the flush_data class method for this module.
+        #{self}.flush_data
 
+        # Run the subscribe class method for this module.
         #{self}.subscribe(
-          bluetooth_obj: 'required - bluetooth_obj returned from #connect',
-          include: 'optional - comma-delimited string(s) to include',
-          exclude: 'optional - comma-delimited string(s) to exclude'
+          include: 'optional - value for include passed into subscribe',
+          exclude: 'optional - value for exclude passed into subscribe',
+          timeout: 'optional - value for timeout passed into subscribe',
+          gps_metadata: 'optional - value for gps_metadata passed into subscribe',
+          include_raw: 'optional - value for include_raw passed into subscribe'
         )
 
+        # Run the send_to_radio class method for this module.
+        #{self}.send_to_radio(
+          bluetooth_obj: 'optional - value for bluetooth_obj passed into send_to_radio',
+          to_radio: 'optional - value for to_radio passed into send_to_radio'
+        )
+
+        # Run the send_text class method for this module.
         #{self}.send_text(
-          bluetooth_obj: 'required - bluetooth_obj returned from #connect',
-          to: 'optional - Destination ID (Default: \"!ffffffff\")',
-          channel: 'optional - channel index (Default: 0)',
-          text: 'optional - Text Message (Default: SYN)',
-          want_ack: 'optional - Want Acknowledgement (Default: false)'
+          bluetooth_obj: 'optional - value for bluetooth_obj passed into send_text',
+          from: 'optional - value for from passed into send_text'
         )
 
+        # Run the send_data class method for this module.
         #{self}.send_data(
-          bluetooth_obj: 'required - bluetooth_obj returned from #connect',
-          data: 'required - Meshtastic::Data',
-          to: 'optional - Destination ID (Default: \"!ffffffff\")',
-          channel: 'optional - channel index (Default: 0)'
+          bluetooth_obj: 'optional - value for bluetooth_obj passed into send_data',
+          data: 'optional - value for data passed into send_data',
+          from: 'optional - value for from passed into send_data'
         )
 
-        #{self}.disconnect(bluetooth_obj: bluetooth_obj)
+        # Run the disconnect class method for this module.
+        #{self}.disconnect(
+          bluetooth_obj: 'optional - value for bluetooth_obj passed into disconnect'
+        )
 
+        # Run the authors class method for this module.
         #{self}.authors
+
       "
     end
   end

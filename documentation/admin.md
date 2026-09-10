@@ -1,6 +1,6 @@
 # Meshtastic::Admin
 
-Builds `Meshtastic::AdminMessage` and sends it on `ADMIN_APP` (port 6) through [Meshtastic.deliver_data](meshtastic.md). Pass a connected `serial_obj`, `bluetooth_obj`, or `tcp_obj`.
+Builds `Meshtastic::AdminMessage` and sends it on `ADMIN_APP` (port 6) through [Meshtastic.deliver_data](meshtastic.md). Pass a connected `serial_obj`, `bluetooth_obj`, `tcp_obj`, or `mqtt_obj`.
 
 Responses come back as `FromRadio` packets on the same transport (`subscribe` / `recv_from_radio`).
 
@@ -48,6 +48,7 @@ Meshtastic::Admin.send(
 
 ## Related
 
+- [Meshtastic::Admin::Firmware](admin-firmware.md)
 - [Meshtastic::Channel](channel.md)
 - [Meshtastic::Config](config.md)
 - [Meshtastic::ModuleConfig](module-config.md)

@@ -136,7 +136,7 @@ describe Meshtastic::Bluetooth do
 
   it 'scans with the selected adapter and bounded discovery timeout' do
     devices = [{ address: 'AA:BB:CC:DD:EE:FF', name: 'Meshtastic_test', paired: true }]
-    expect(described_class::BlueZ).to receive(:scan).with(adapter: 'hci1', timeout: 2).and_return(devices)
+    expect(described_class::BlueZ).to receive(:scan).with({ adapter: 'hci1', timeout: 2 }).and_return(devices)
     expect(described_class.scan(adapter: 'hci1', timeout: 2)).to eq(devices)
   end
 

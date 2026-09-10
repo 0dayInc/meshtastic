@@ -12,7 +12,9 @@ module Meshtastic
       TORADIO_UUID = 'f75c76d2-129e-4dad-a1dd-7866124401e7'
       FROMRADIO_UUID = '2c55e69e-4993-11ed-b878-0242ac120002'
 
-      def self.scan(adapter: 'hci0', timeout: 5)
+      public_class_method def self.scan(opts = {})
+        adapter = opts[:adapter] || 'hci0'
+        timeout = opts[:timeout] || 5
         new(address: '00:00:00:00:00:00', adapter: adapter, timeout: timeout).scan_adapter
       end
 
@@ -181,6 +183,23 @@ module Meshtastic
         @adapter = adapter
         @timeout = timeout
         @mutex = Mutex.new
+      end
+
+      public_class_method def self.authors
+        "AUTHOR(S):\n          0day Inc. <support@0dayinc.com>\n        "
+      end
+
+      public_class_method def self.help
+        puts "USAGE:
+          # Scan BlueZ for nearby Meshtastic BLE advertisements.
+          #{self}.scan(
+            adapter: 'optional - BlueZ adapter name such as hci0',
+            timeout: 'optional - discovery duration in seconds (default: 5)'
+          )
+
+          # Print the AUTHOR(S) string for this module.
+          #{self}.authors
+        "
       end
     end
   end

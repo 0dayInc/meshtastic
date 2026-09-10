@@ -280,6 +280,27 @@ module Meshtastic
       raise e
     end
 
+    public_class_method def self.send_data(opts = {})
+      mqtt_obj = opts[:mqtt_obj]
+      raise ArgumentError, 'mqtt_obj is required' unless mqtt_obj
+      raise ArgumentError, 'data is required' unless opts[:data].is_a?(Meshtastic::Data)
+
+      opts = opts.dup
+      opts[:from] ||= mqtt_obj.client_id
+      opts[:to] ||= '!ffffffff'
+      opts[:root_topic] ||= 'msh'
+      opts[:region] ||= 'US'
+      opts[:topic] ||= '2/e/LongFast/#'
+      opts[:topic] = opts[:topic].to_s.gsub('/#', '')
+      opts[:channel] ||= 6
+      absolute_topic = "#{opts[:root_topic]}/#{opts[:region]}/#{opts[:topic]}/#{opts[:from]}"
+      opts[:topic] = absolute_topic
+      opts[:via] = :mqtt
+      mqtt_obj.publish(absolute_topic, Meshtastic::MeshInterface.new.send_data(opts))
+    rescue StandardError => e
+      raise e
+    end
+
     # Supported Method Parameters::
     # mqtt_obj = Meshtastic.disconnect(
     #   mqtt_obj: 'required - mqtt_obj returned from #connect method'
@@ -304,52 +325,68 @@ module Meshtastic
     # Display Usage for this Module
 
     public_class_method def self.help
-      puts "USAGE:
-        mqtt_obj = #{self}.connect(
-          host: 'optional - mqtt host (default: mqtt.meshtastic.org)',
-          port: 'optional - mqtt port (defaults: 1883)',
-          tls: 'optional - use TLS (default: false)',
-          username: 'optional - mqtt username (default: meshdev)',
-          password: 'optional - (default: large4cats)',
-          client_id: 'optional - client ID (default: random 4-byte hex string)',
-          keep_alive: 'optional - keep alive interval (default: 15)',
-          ack_timeout: 'optional - acknowledgement timeout (default: 30)'
+      puts "        USAGE:
+        # Run the connect class method for this module.
+        #{self}.connect(
+          host: 'optional - value for host passed into connect',
+          port: 'optional - value for port passed into connect',
+          tls: 'optional - value for tls passed into connect',
+          username: 'optional - value for username passed into connect',
+          password: 'optional - value for password passed into connect',
+          client_id: 'optional - value for client_id passed into connect',
+          keep_alive: 'optional - value for keep_alive passed into connect',
+          ack_timeout: 'optional - value for ack_timeout passed into connect'
         )
 
+        # Run the subscribe class method for this module.
         #{self}.subscribe(
-          mqtt_obj: 'required - mqtt_obj object returned from #connect method',
-          root_topic: 'optional - root topic (default: msh)',
-          region: 'optional - region e.g. 'US/VA', etc (default: US)',
-          topic: 'optional - channel ID path e.g. '2/stat/#' (default: '2/e/LongFast/#')',
-          psks: 'optional - hash of :channel_id => psk key value pairs (default: { LongFast: 'AQ==' })',
-          qos: 'optional - quality of service (default: 0)',
-          json: 'optional - JSON output (default: false)',
-          exclude: 'optional - comma-delimited string(s) to exclude in message (default: nil)',
-          include: 'optional - comma-delimited string(s) to include on in message (default: nil)',
-          gps_metadata: 'optional - include GPS metadata in output (default: false)'
+          mqtt_obj: 'optional - value for mqtt_obj passed into subscribe',
+          root_topic: 'optional - value for root_topic passed into subscribe',
+          region: 'optional - value for region passed into subscribe',
+          topic: 'optional - value for topic passed into subscribe',
+          psks: 'optional - value for psks passed into subscribe',
+          qos: 'optional - value for qos passed into subscribe',
+          json: 'optional - value for json passed into subscribe',
+          exclude: 'optional - value for exclude passed into subscribe',
+          include: 'optional - value for include passed into subscribe',
+          gps_metadata: 'optional - value for gps_metadata passed into subscribe',
+          include_raw: 'optional - value for include_raw passed into subscribe'
         )
 
+        # Run the send_text class method for this module.
         #{self}.send_text(
-          mqtt_obj: 'required - mqtt_obj returned from #connect method',
-          from: 'required - From ID (String or Integer) (Default: \"!00000b0b\")',
-          to: 'optional - Destination ID (Default: \"!ffffffff\")',
-          root_topic: 'optional - root topic (default: msh)',
-          region: 'optional - region e.g. 'US/VA', etc (default: US)',
-          topic: 'optional - topic to publish to (default: '2/e/LongFast/#')',
-          channel: 'optional - channel (Default: 6)',
-          text: 'optional - Text Message (Default: SYN)',
-          want_ack: 'optional - Want Acknowledgement (Default: false)',
-          want_response: 'optional - Want Response (Default: false)',
-          hop_limit: 'optional - Hop Limit (Default: 3)',
-          on_response: 'optional - Callback on Response',
-          psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: 'AQ==' })'
+          mqtt_obj: 'optional - value for mqtt_obj passed into send_text',
+          from: 'optional - value for from passed into send_text',
+          to: 'optional - value for to passed into send_text',
+          root_topic: 'optional - value for root_topic passed into send_text',
+          region: 'optional - value for region passed into send_text',
+          topic: 'optional - value for topic passed into send_text',
+          channel: 'optional - value for channel passed into send_text',
+          via: 'optional - value for via passed into send_text',
+          text: 'optional - value for text passed into send_text'
         )
 
-        mqtt_obj = #{self}.disconnect(
-          mqtt_obj: 'required - mqtt_obj object returned from #connect method'
+        # Run the send_data class method for this module.
+        #{self}.send_data(
+          mqtt_obj: 'optional - value for mqtt_obj passed into send_data',
+          data: 'optional - value for data passed into send_data',
+          from: 'optional - value for from passed into send_data',
+          to: 'optional - value for to passed into send_data',
+          root_topic: 'optional - value for root_topic passed into send_data',
+          region: 'optional - value for region passed into send_data',
+          topic: 'optional - value for topic passed into send_data',
+          channel: 'optional - value for channel passed into send_data',
+          via: 'optional - value for via passed into send_data'
         )
 
+        # Run the disconnect class method for this module.
+        #{self}.disconnect(
+          mqtt_obj: 'optional - value for mqtt_obj passed into disconnect'
+        )
+
+        # Run the authors class method for this module.
         #{self}.authors
+
       "
     end
   end
