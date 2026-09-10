@@ -2,21 +2,31 @@
 
 require 'meshtastic/paxcount_pb'
 
-# Plugin used to interact with Meshtastic nodes
 module Meshtastic
-  module Paxcount
-    # Author(s):: 0day Inc. <support@0dayinc.com>
-
-    public_class_method def self.authors
-      "AUTHOR(S):
-        0day Inc. <support@0dayinc.com>
-      "
+  class Paxcount
+    def self.build(opts = {})
+      count = new
+      count.wifi = opts[:wifi].to_i if opts[:wifi]
+      count.ble = opts[:ble].to_i if opts[:ble]
+      count.uptime = opts[:uptime].to_i if opts[:uptime]
+      count
     end
 
-    # Display Usage for this Module
+    def self.transmit(opts = {})
+      data = Meshtastic::Data.new(
+        portnum: :PAXCOUNTER_APP,
+        payload: build(opts).to_proto
+      )
+      Meshtastic.deliver_data(opts.merge(data: data, port_num: Meshtastic::PortNum::PAXCOUNTER_APP))
+    end
 
-    public_class_method def self.help
+    def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
+
+    def self.help
       puts "USAGE:
+        #{self}.transmit(serial_obj: serial_obj, wifi: 3, ble: 2)
         #{self}.authors
       "
     end

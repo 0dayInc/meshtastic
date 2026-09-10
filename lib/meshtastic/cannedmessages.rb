@@ -2,21 +2,29 @@
 
 require 'meshtastic/cannedmessages_pb'
 
-# Plugin used to interact with Meshtastic nodes
 module Meshtastic
   module Cannedmessages
-    # Author(s):: 0day Inc. <support@0dayinc.com>
-
-    public_class_method def self.authors
-      "AUTHOR(S):
-        0day Inc. <support@0dayinc.com>
-      "
+    def self.encode(opts = {})
+      config = Meshtastic::CannedMessageModuleConfig.new
+      config.messages = opts.fetch(:messages, '')
+      config
     end
 
-    # Display Usage for this Module
+    def self.send(opts = {})
+      data = Meshtastic::Data.new(
+        portnum: :TEXT_MESSAGE_APP,
+        payload: encode(opts).messages.to_s.b
+      )
+      Meshtastic.deliver_data(opts.merge(data: data, port_num: Meshtastic::PortNum::TEXT_MESSAGE_APP))
+    end
 
-    public_class_method def self.help
+    def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
+
+    def self.help
       puts "USAGE:
+        #{self}.encode(messages: \"Yes\\nNo\\nMaybe\")
         #{self}.authors
       "
     end

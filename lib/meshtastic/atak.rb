@@ -2,21 +2,34 @@
 
 require 'meshtastic/atak_pb'
 
-# Plugin used to interact with Meshtastic nodes
 module Meshtastic
   module ATAK
-    # Author(s):: 0day Inc. <support@0dayinc.com>
-
-    public_class_method def self.authors
-      "AUTHOR(S):
-        0day Inc. <support@0dayinc.com>
-      "
+    def self.encode(opts = {})
+      packet = Meshtastic::TAKPacket.new
+      packet.is_compressed = opts.fetch(:is_compressed, false)
+      if opts[:chat]
+        packet.chat = opts[:chat]
+      elsif opts[:message]
+        packet.chat = Meshtastic::GeoChat.new(message: opts[:message])
+      end
+      packet
     end
 
-    # Display Usage for this Module
+    def self.send(opts = {})
+      data = Meshtastic::Data.new(
+        portnum: :ATAK_PLUGIN,
+        payload: encode(opts).to_proto
+      )
+      Meshtastic.deliver_data(opts.merge(data: data, port_num: Meshtastic::PortNum::ATAK_PLUGIN))
+    end
 
-    public_class_method def self.help
+    def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
+
+    def self.help
       puts "USAGE:
+        #{self}.send(serial_obj: serial_obj, message: 'ATAK chat')
         #{self}.authors
       "
     end

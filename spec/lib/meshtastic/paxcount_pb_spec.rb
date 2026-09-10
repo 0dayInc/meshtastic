@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::PaxcountPB do
+describe Meshtastic::Paxcount do
 end

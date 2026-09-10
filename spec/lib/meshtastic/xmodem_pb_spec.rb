@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::XModemPB do
+describe Meshtastic::XModem do
 end

@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::MeshPB do
+describe Meshtastic::MeshPacket do
 end

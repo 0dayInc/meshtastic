@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::MQTTPB do
+describe Meshtastic::ServiceEnvelope do
 end

@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::DeviceonlyPB do
+describe Meshtastic::DeviceState do
 end

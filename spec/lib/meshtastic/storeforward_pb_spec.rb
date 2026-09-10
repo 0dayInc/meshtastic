@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::StoreforwardPB do
+describe Meshtastic::StoreAndForward do
 end

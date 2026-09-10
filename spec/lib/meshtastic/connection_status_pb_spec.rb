@@ -2,5 +2,5 @@
 
 require 'spec_helper'
 
-describe Meshtastic::ConnectionStatusPB do
+describe Meshtastic::DeviceConnectionStatus do
 end

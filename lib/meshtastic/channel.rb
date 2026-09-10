@@ -2,21 +2,25 @@
 
 require 'meshtastic/channel_pb'
 
-# Plugin used to interact with Meshtastic nodes
 module Meshtastic
-  module Channel
-    # Author(s):: 0day Inc. <support@0dayinc.com>
-
-    public_class_method def self.authors
-      "AUTHOR(S):
-        0day Inc. <support@0dayinc.com>
-      "
+  class Channel
+    def self.get(opts = {})
+      Admin.get_channel(opts)
     end
 
-    # Display Usage for this Module
+    def self.set(opts = {})
+      channel = opts[:channel] || opts[:channel_settings] || new
+      Admin.set_channel(opts.merge(channel_settings: channel))
+    end
 
-    public_class_method def self.help
+    def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
+
+    def self.help
       puts "USAGE:
+        #{self}.get(serial_obj: serial_obj, index: 0)
+        #{self}.set(serial_obj: serial_obj, channel: #{self}.new)
         #{self}.authors
       "
     end

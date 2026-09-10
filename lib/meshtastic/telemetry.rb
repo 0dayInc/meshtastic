@@ -2,21 +2,30 @@
 
 require 'meshtastic/telemetry_pb'
 
-# Plugin used to interact with Meshtastic nodes
 module Meshtastic
-  module Telemetry
-    # Author(s):: 0day Inc. <support@0dayinc.com>
-
-    public_class_method def self.authors
-      "AUTHOR(S):
-        0day Inc. <support@0dayinc.com>
-      "
+  class Telemetry
+    def self.build(opts = {})
+      telemetry = new
+      telemetry.time = opts[:time].to_i if opts[:time]
+      telemetry
     end
 
-    # Display Usage for this Module
+    def self.request(opts = {})
+      data = Meshtastic::Data.new(
+        portnum: :TELEMETRY_APP,
+        payload: build(opts).to_proto,
+        want_response: true
+      )
+      Meshtastic.deliver_data(opts.merge(data: data, port_num: Meshtastic::PortNum::TELEMETRY_APP, want_response: true))
+    end
 
-    public_class_method def self.help
+    def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
+
+    def self.help
       puts "USAGE:
+        #{self}.request(serial_obj: serial_obj, to: '!aabbccdd')
         #{self}.authors
       "
     end

@@ -2,21 +2,23 @@
 
 require 'meshtastic/xmodem_pb'
 
-# Plugin used to interact with Meshtastic nodes
 module Meshtastic
   module Xmodem
-    # Author(s):: 0day Inc. <support@0dayinc.com>
-
-    public_class_method def self.authors
-      "AUTHOR(S):
-        0day Inc. <support@0dayinc.com>
-      "
+    def self.encode(opts = {})
+      packet = Meshtastic::XModem.new
+      packet.control = opts.fetch(:control, :SOH)
+      packet.seq = opts[:seq].to_i if opts[:seq]
+      packet.buffer = opts[:buffer] if opts[:buffer]
+      packet
     end
 
-    # Display Usage for this Module
+    def self.authors
+      "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
+    end
 
-    public_class_method def self.help
+    def self.help
       puts "USAGE:
+        #{self}.encode(control: :SOH, seq: 1, buffer: data)
         #{self}.authors
       "
     end
