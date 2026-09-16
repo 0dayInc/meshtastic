@@ -20,6 +20,9 @@ Gem::Specification.new do |spec|
   spec.metadata['rubygems_mfa_required'] = 'true'
 
   spec.files = `git ls-files -z`.split("\x00")
+  # Protobuf regeneration can introduce dependencies before Git tracks them.
+  # Package Ruby sources and their specs independently of staging state.
+  spec.files |= Dir.glob('{lib,spec}/**/*.rb', base: __dir__)
   spec.executables = spec.files.grep(%r{^bin/}) do |f|
     File.basename(f)
   end

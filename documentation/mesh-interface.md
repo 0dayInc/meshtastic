@@ -18,6 +18,13 @@ Packet builder used by Serial, Bluetooth, TCP, and MQTT. Instantiated internally
 
 On Serial/Bluetooth/TCP, transports pass `psks: nil` so the radio owns channel crypto. MQTT must pass `psks`.
 
+`send_data` and `send_packet` preserve `pki_encrypted: true` and `public_key:`
+(32 raw bytes) for remote administrative requests. The connected radio performs
+the public-key encryption; the Ruby client does not encrypt these packets itself.
+Explicit PKI requests reject MQTT and host-side PSK encryption instead of silently
+falling back to channel encryption. Supplying a recipient key does not grant admin
+rights: the target must authorize the sending radio's key.
+
 `send_text` refuses payloads larger than `Meshtastic::Constants::DATA_PAYLOAD_LEN`.
 
 ## Example
