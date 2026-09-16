@@ -1,28 +1,59 @@
 # Meshtastic::Admin::Config
 
-Admin get/set for radio `Meshtastic::Config` sections. The generated protobuf remains `Meshtastic::Config`.
+Admin requests and writes for every section in the bundled `Meshtastic::Config` protobuf. Public methods take a single options Hash; `help` describes the options. The generated protobuf remains `Meshtastic::Config`.
 
-## Methods
+## Operations
 
-- `get(config_type:)` — default `:DEVICE_CONFIG`
-- `set(config:)`
-- Named getters: `get_device`, `get_position`, `get_power`, `get_network`, `get_display`, `get_lora`, `get_bluetooth`, `get_security`, `get_sessionkey`, `get_device_ui`
-- `set_device(device:)`, `set_lora(lora:)`
-- `help` / `authors`
+| Section | Read | Write | Value type |
+| --- | --- | --- | --- |
+| Device | `get_device` | `set_device(device:)` | `Config::DeviceConfig` or field Hash |
+| Position | `get_position` | `set_position(position:)` | `Config::PositionConfig` or field Hash |
+| Power | `get_power` | `set_power(power:)` | `Config::PowerConfig` or field Hash |
+| Network | `get_network` | `set_network(network:)` | `Config::NetworkConfig` or field Hash |
+| Display | `get_display` | `set_display(display:)` | `Config::DisplayConfig` or field Hash |
+| LoRa | `get_lora` | `set_lora(lora:)` | `Config::LoRaConfig` or field Hash |
+| Bluetooth | `get_bluetooth` | `set_bluetooth(bluetooth:)` | `Config::BluetoothConfig` or field Hash |
+| Security | `get_security` | `set_security(security:)` | `Config::SecurityConfig` or field Hash |
+| Session key | `get_sessionkey` | Request-only; writes raise `ArgumentError` | Empty `Config::SessionkeyConfig` placeholder |
+| Device UI | `get_device_ui` | `set_device_ui(device_ui:)` | `Meshtastic::DeviceUIConfig` or field Hash |
 
-`config_type` values: `:DEVICE_CONFIG`, `:POSITION_CONFIG`, `:POWER_CONFIG`, `:NETWORK_CONFIG`, `:DISPLAY_CONFIG`, `:LORA_CONFIG`, `:BLUETOOTH_CONFIG`, `:SECURITY_CONFIG`, `:SESSIONKEY_CONFIG`, `:DEVICEUI_CONFIG`.
+- `get(config_type:)` is the raw ConfigType request (default `:DEVICE_CONFIG`). Supported types are `:DEVICE_CONFIG`, `:POSITION_CONFIG`, `:POWER_CONFIG`, `:NETWORK_CONFIG`, `:DISPLAY_CONFIG`, `:LORA_CONFIG`, `:BLUETOOTH_CONFIG`, `:SECURITY_CONFIG`, `:SESSIONKEY_CONFIG`, and `:DEVICEUI_CONFIG`.
+- `set(config:)` accepts a `Meshtastic::Config` with exactly one selected section; an absent/empty config is rejected before transmission. All fields of the section, including nested/repeated fields, are supported by the generated protobuf, not a hand-picked subset.
+- Device UI uses **`get_ui_config_request` / `store_ui_config`**, not the firmware's no-op Config device-UI handling. Generic `set` also routes a `device_ui` section correctly. The raw `get(config_type: :DEVICEUI_CONFIG)` remains a raw enum request; use `get_device_ui` for useful UI data.
+- `SessionkeyConfig` is empty and request-only. The authorization bytes come from **`AdminMessage.session_passkey`**, not the Config payload. Both `set_sessionkey` and generic `set` reject this non-writable section.
+- `help` / `authors` provide usage and attribution.
+
+ModuleConfig is a different protobuf: use `Admin.get_module_config` / `Admin.set_module_config` for MQTT, telemetry, and other module configuration.
+
+## Transport and authorization
+
+Read/write helpers pass through Admin options, including `serial_obj`, `bluetooth_obj`, `tcp_obj`, `mqtt_obj`, `to`, `from`, numeric transport `channel`, `want_ack`, `want_response`, `hop_limit`, and `session_passkey`. Use a supported connected transport. Session authentication and remote-node routing follow [Admin](admin.md).
+
+A return value means transport submission, **not confirmed persistence**. These methods do not wait for a reply, automatically acquire a session key, or read settings back. Obtain the prior configuration, edit it, write, and request it again to confirm; configuration writes replace a whole section rather than patching only non-default fields. Omitting a field in a Hash can reset that setting to its protobuf default. Firmware version and hardware determine which fields are applied, and writes may reboot/disconnect the node.
 
 ## Example
 
 ```ruby
 Meshtastic::Admin::Config.get_lora(serial_obj: serial_obj)
 
-config = Meshtastic::Config.new
-config.device = Meshtastic::Config::DeviceConfig.new(role: :CLIENT)
-Meshtastic::Admin::Config.set(serial_obj: serial_obj, config: config)
+# Supply the full desired section; prefer editing the returned protobuf.
+Meshtastic::Admin::Config.set_position(
+  serial_obj: serial_obj,
+  position: Meshtastic::Config::PositionConfig.new(position_broadcast_secs: 900)
+)
+
+Meshtastic::Admin::Config.set_device_ui(
+  serial_obj: serial_obj,
+  device_ui: Meshtastic::DeviceUIConfig.new
+)
 ```
 
-## Related
+Ruby protobuf's `display` reader collides with `Object#display`; inspect `config['display']`, not `config.display`. Do not log configuration objects: network/security settings and session passkeys can contain secrets.
 
-- [Meshtastic::Admin](admin.md)
-- [Meshtastic::Admin::Channel](admin-channel.md)
+## Protocol evidence
+
+- [Official Config schema](https://github.com/meshtastic/protobufs/blob/master/meshtastic/config.proto): all ten variants and request-only SessionkeyConfig.
+- [Official Admin schema](https://github.com/meshtastic/protobufs/blob/master/meshtastic/admin.proto): ConfigType and dedicated UI operations.
+- [Official firmware AdminModule](https://github.com/meshtastic/firmware/blob/master/src/modules/AdminModule.cpp): `handleSetConfig` / config request handling mark device-UI Config operations as no-ops and point to the dedicated handlers.
+
+Related: [Admin](admin.md), [Channel](admin-channel.md).

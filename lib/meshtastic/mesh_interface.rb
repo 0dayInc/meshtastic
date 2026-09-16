@@ -233,6 +233,12 @@ module Meshtastic
       mesh_packet.want_ack = want_ack
       mesh_packet.hop_limit = hop_limit
       mesh_packet.id = generate_packet_id(last_packet_id: last_packet_id)
+      mesh_packet.pki_encrypted = opts[:pki_encrypted] if opts.key?(:pki_encrypted)
+      mesh_packet.public_key = opts[:public_key] if opts[:public_key]
+      if mesh_packet.pki_encrypted
+        raise ArgumentError, 'PKI encryption requires a radio transport without host PSK encryption' unless via == :radio && (psks.nil? || psks.empty?)
+        raise ArgumentError, 'recipient public_key must contain 32 bytes' unless mesh_packet.public_key.bytesize == 32
+      end
 
       # When psks is nil/empty, leave the packet decoded so the radio (serial/TCP)
       # device can apply the channel PSK itself. MQTT callers must pass psks so the
@@ -340,6 +346,8 @@ module Meshtastic
         channel: channel,
         want_ack: want_ack,
         hop_limit: hop_limit,
+        pki_encrypted: opts.fetch(:pki_encrypted, false),
+        public_key: opts[:public_key],
         psks: psks
       )
     rescue StandardError => e

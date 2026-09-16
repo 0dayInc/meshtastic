@@ -10,7 +10,14 @@ module Meshtastic
       end
 
       public_class_method def self.set(opts = {})
-        Admin.set_config(opts.merge(config: opts[:config]))
+        config = opts[:config]
+        raise ArgumentError, 'config must contain one Config section' unless config.is_a?(Meshtastic::Config) && config.payload_variant
+        raise ArgumentError, 'sessionkey is a request-only placeholder; use get_sessionkey' if config.payload_variant == :sessionkey
+
+        section_keys = Meshtastic::Config.descriptor.map { |field| field.name.to_sym }
+        return Admin.store_ui_config(opts.except(*section_keys, :config).merge(ui_config: config.device_ui)) if config.payload_variant == :device_ui
+
+        Admin.set_config(opts.except(*section_keys).merge(config: config))
       end
 
       public_class_method def self.get_device(opts = {})
@@ -50,19 +57,47 @@ module Meshtastic
       end
 
       public_class_method def self.get_device_ui(opts = {})
-        get(opts.merge(config_type: :DEVICEUI_CONFIG))
+        Admin.get_ui_config(opts.merge({}))
       end
 
       public_class_method def self.set_device(opts = {})
-        config = Meshtastic::Config.new
-        config.device = opts[:device]
-        set(opts.merge(config: config))
+        set(opts.merge(config: Meshtastic::Config.new(device: opts.fetch(:device))))
       end
 
       public_class_method def self.set_lora(opts = {})
-        config = Meshtastic::Config.new
-        config.lora = opts[:lora]
-        set(opts.merge(config: config))
+        set(opts.merge(config: Meshtastic::Config.new(lora: opts.fetch(:lora))))
+      end
+
+      public_class_method def self.set_position(opts = {})
+        set(opts.merge(config: Meshtastic::Config.new(position: opts.fetch(:position))))
+      end
+
+      public_class_method def self.set_power(opts = {})
+        set(opts.merge(config: Meshtastic::Config.new(power: opts.fetch(:power))))
+      end
+
+      public_class_method def self.set_network(opts = {})
+        set(opts.merge(config: Meshtastic::Config.new(network: opts.fetch(:network))))
+      end
+
+      public_class_method def self.set_display(opts = {})
+        set(opts.merge(config: Meshtastic::Config.new(display: opts.fetch(:display))))
+      end
+
+      public_class_method def self.set_bluetooth(opts = {})
+        set(opts.merge(config: Meshtastic::Config.new(bluetooth: opts.fetch(:bluetooth))))
+      end
+
+      public_class_method def self.set_security(opts = {})
+        set(opts.merge(config: Meshtastic::Config.new(security: opts.fetch(:security))))
+      end
+
+      public_class_method def self.set_sessionkey(opts = {})
+        set(opts.merge(config: Meshtastic::Config.new(sessionkey: opts.fetch(:sessionkey))))
+      end
+
+      public_class_method def self.set_device_ui(opts = {})
+        set(opts.merge(config: Meshtastic::Config.new(device_ui: opts.fetch(:device_ui))))
       end
 
       public_class_method def self.authors
@@ -128,7 +163,7 @@ module Meshtastic
             serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
           )
 
-          # Request DEVICEUI_CONFIG from the node.
+          # Request DeviceUIConfig using dedicated firmware operation.
           #{self}.get_device_ui(
             serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
           )
@@ -136,14 +171,38 @@ module Meshtastic
           # Write DeviceConfig wrapped in a Config protobuf.
           #{self}.set_device(
             serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
-            device: 'required - Meshtastic::Config::DeviceConfig protobuf to write'
+            device: 'required - DeviceConfig protobuf or complete section field Hash'
           )
 
           # Write LoRaConfig wrapped in a Config protobuf.
           #{self}.set_lora(
             serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
-            lora: 'required - Meshtastic::Config::LoRaConfig protobuf to write'
+            lora: 'required - LoRaConfig protobuf or complete section field Hash'
           )
+
+          # Write position configuration to node.
+          #{self}.set_position(position: 'required - PositionConfig protobuf or field hash')
+
+          # Write power configuration to node.
+          #{self}.set_power(power: 'required - PowerConfig protobuf or field hash')
+
+          # Write network configuration to node.
+          #{self}.set_network(network: 'required - NetworkConfig protobuf or field hash')
+
+          # Write display configuration to node.
+          #{self}.set_display(display: 'required - DisplayConfig protobuf or field hash')
+
+          # Write Bluetooth configuration to node.
+          #{self}.set_bluetooth(bluetooth: 'required - BluetoothConfig protobuf or field hash')
+
+          # Write security configuration to node.
+          #{self}.set_security(security: 'required - SecurityConfig protobuf or field hash')
+
+          # Reject writes to request-only session key placeholder.
+          #{self}.set_sessionkey(sessionkey: 'required - placeholder only; always raises ArgumentError')
+
+          # Write device UI configuration to node.
+          #{self}.set_device_ui(device_ui: 'required - DeviceUIConfig protobuf or field hash')
 
           # Print the AUTHOR(S) string for this module.
           #{self}.authors

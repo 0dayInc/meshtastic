@@ -6,13 +6,13 @@ source 'https://rubygems.org'
 
 gemspec
 
-gem 'bundler', '>=4.0.20'
+gem 'bundler', '>=4.0.21'
 gem 'bundler-audit', '>=0.9.3'
 gem 'executable-hooks', '1.7.1'
 gem 'gem-wrappers', '1.4.0'
 gem 'geocoder', '1.8.6'
 gem 'google-protobuf', '4.36.1'
-gem 'grpc-tools', '1.83.1'
+gem 'grpc-tools', '1.84.0'
 gem 'mqtt', '0.7.0'
 gem 'rake', '13.4.2'
 gem 'rdoc', '7.0.4'
