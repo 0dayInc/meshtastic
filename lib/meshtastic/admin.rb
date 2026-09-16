@@ -3,6 +3,7 @@
 require 'timeout'
 require 'monitor'
 require 'meshtastic/admin_pb'
+require 'meshtastic/mqtt'
 
 module Meshtastic
   module Admin
@@ -18,7 +19,7 @@ module Meshtastic
     end
 
     SKIP = %i[
-      message serial_obj bluetooth_obj tcp_obj mqtt_obj to from channel want_ack hop_limit
+      message transport_obj to from channel want_ack hop_limit
       want_response port_num data via psks seconds owner long_name short_name index config_type
       module_config_type path node_num lat lon altitude time channel_settings channel_pb
       config module_config messages ringtone scale location event event_code kb_char touch_x
@@ -27,7 +28,26 @@ module Meshtastic
     ].freeze
     PAYLOAD_FIELDS = Meshtastic::AdminMessage.descriptor.lookup_oneof('payload_variant').map { |field| field.name.to_sym }.freeze
 
+    # Classify a handle returned by a transport's connect method.
+    public_class_method def self.transport_type(opts = {})
+      reject_legacy_transport_options(opts)
+      transport = opts[:transport_obj]
+      return :mqtt if transport.is_a?(MQTTClient)
+      raise ArgumentError, 'transport_obj has ambiguous transport handle keys' if transport.is_a?(Hash) && transport.key?(:bluetooth_conn) && (transport.key?(:serial_conn) || transport.key?(:tcp_socket))
+
+      if transport.is_a?(Hash) && transport.key?(:tcp_socket)
+        raise ArgumentError, 'transport_obj TCP handle requires tcp_socket and serial_conn' unless transport[:tcp_socket] && transport[:serial_conn]
+
+        return :tcp
+      end
+      return :bluetooth if transport.is_a?(Hash) && transport[:bluetooth_conn]
+      return :serial if transport.is_a?(Hash) && transport[:serial_conn]
+
+      raise ArgumentError, 'transport_obj must be a connected Serial, Bluetooth, TCP handle or MQTT client'
+    end
+
     public_class_method def self.encode(opts = {})
+      reject_legacy_transport_options(opts)
       original = opts[:message] || Meshtastic::AdminMessage.new
       raise ArgumentError, 'message must be an AdminMessage' unless original.is_a?(Meshtastic::AdminMessage)
 
@@ -54,8 +74,9 @@ module Meshtastic
     end
 
     public_class_method def self.send(opts = {})
+      type = transport_type(opts)
       message = encode(opts)
-      connection = opts[:serial_obj] || opts[:bluetooth_obj] || opts[:tcp_obj]
+      connection = opts[:transport_obj] unless type == :mqtt
       destination = opts[:to] || connection&.dig(:my_node_num)
       destination = destination.delete_prefix('!').to_i(16) if destination.is_a?(String) && destination.match?(/\A![0-9a-fA-F]{8}\z/)
       raise ArgumentError, 'an explicit unicast destination or connected my_node_num is required' unless destination.is_a?(Integer) && destination.between?(1, 0xfffffffe)
@@ -70,19 +91,21 @@ module Meshtastic
         payload: message.to_proto,
         want_response: want_response
       )
-      delivery = opts.merge(data: data, port_num: Meshtastic::PortNum::ADMIN_APP, to: destination)
+      delivery = opts.except(:transport_obj).merge(data: data, port_num: Meshtastic::PortNum::ADMIN_APP, to: destination)
+      delivery[:"#{type}_obj"] = opts[:transport_obj]
       delivery[:from] = 0 if connection && !opts.key?(:from)
       Meshtastic.deliver_data(delivery)
     end
 
     public_class_method def self.request(opts = {})
+      type = transport_type(opts)
       request_id = opts.fetch(:request_id) { Random.rand(2..0xffffffff) }
       raise ArgumentError, 'request_id must be an Integer from 2 through 0xffffffff' unless request_id.is_a?(Integer) && request_id.between?(2, 0xffffffff)
 
       options = opts.except(:request_id, :wait)
       return { request_id: request_id, result: send(options.merge(last_packet_id: request_id - 1)) } unless opts.fetch(:wait, true)
 
-      connection = options[:serial_obj] || options[:bluetooth_obj] || options[:tcp_obj]
+      connection = options[:transport_obj] unless type == :mqtt
       queue = connection && connection[:from_radio_queue]
       raise ArgumentError, 'synchronous Admin requires a connected radio receive queue' unless queue
 
@@ -112,6 +135,11 @@ module Meshtastic
       raise
     ensure
       lock.exit if acquired
+    end
+
+    private_class_method def self.reject_legacy_transport_options(opts = {})
+      legacy = opts.keys & %i[serial_obj bluetooth_obj tcp_obj mqtt_obj]
+      raise ArgumentError, "Admin no longer accepts #{legacy.join(', ')}; use transport_obj: with the connected handle" unless legacy.empty?
     end
 
     private_class_method def self.acquire_session(opts = {})
@@ -174,6 +202,7 @@ module Meshtastic
     end
 
     public_class_method def self.decode(opts = {})
+      reject_legacy_transport_options(opts)
       packet = opts[:packet]
       packet = packet.packet if packet.is_a?(Meshtastic::FromRadio)
       data = packet.is_a?(Meshtastic::MeshPacket) ? packet.decoded : packet
@@ -186,6 +215,7 @@ module Meshtastic
     end
 
     public_class_method def self.response(opts = {})
+      reject_legacy_transport_options(opts)
       packet = opts[:packet]
       packet = packet.packet if packet.is_a?(Meshtastic::FromRadio)
       return nil unless packet.is_a?(Meshtastic::MeshPacket) && packet.decoded&.portnum == :ADMIN_APP
@@ -419,6 +449,14 @@ module Meshtastic
 
     public_class_method def self.help
       puts "USAGE:
+        # Classify the actual connected transport handle.
+        #{self}.transport_type(
+          transport_obj: 'required - handle from Serial.connect, Bluetooth.connect, TCP.connect or MQTT.connect'
+        )
+        # Returns :serial, :bluetooth, :tcp or :mqtt; TCP includes serial framing keys.
+        # Nil, unknown and ambiguous handles are rejected. Old transport option keys are rejected.
+        # All send wrappers below require transport_obj and accept the shared send options.
+
         # Encode exactly one AdminMessage payload without modifying the caller.
         #{self}.encode(
           message: 'optional - existing AdminMessage to copy instead of a new one',
@@ -427,10 +465,7 @@ module Meshtastic
 
         # Send an AdminMessage on ADMIN_APP over a connected transport.
         #{self}.send(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
-          bluetooth_obj: 'optional - BLE handle from Meshtastic::Bluetooth.connect',
-          tcp_obj: 'optional - TCP handle from Meshtastic::TCP.connect',
-          mqtt_obj: 'optional - MQTT client from Meshtastic::MQTT.connect',
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client',
           to: 'optional - unicast node integer or !eighthex; defaults to connected my_node_num; required for MQTT',
           from: 'optional - sender number; radio default zero denotes the local PhoneAPI client',
           channel: 'optional - routing channel index (default zero)',
@@ -478,13 +513,13 @@ module Meshtastic
 
         # Reboot the node after a delay.
         #{self}.reboot(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client',
           seconds: 'optional - delay before reboot in seconds (default: 5)'
         )
 
         # Shut down the node after a delay.
         #{self}.shutdown(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client',
           seconds: 'optional - delay before shutdown in seconds (default: 5)'
         )
 
@@ -497,7 +532,7 @@ module Meshtastic
 
         # Request the node owner User protobuf.
         #{self}.get_owner(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client'
         )
 
         # Write a Channel protobuf to the node.
@@ -533,7 +568,7 @@ module Meshtastic
 
         # Request canned-message module strings.
         #{self}.get_canned_messages(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client'
         )
 
         # Set canned-message module strings.
@@ -543,12 +578,12 @@ module Meshtastic
 
         # Request DeviceMetadata (firmware version and hardware).
         #{self}.get_device_metadata(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client'
         )
 
         # Request the RTTTL ringtone string.
         #{self}.get_ringtone(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client'
         )
 
         # Set the RTTTL ringtone string.
@@ -558,17 +593,17 @@ module Meshtastic
 
         # Request DeviceConnectionStatus.
         #{self}.get_device_connection_status(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client'
         )
 
         # Request remote-hardware pin definitions.
         #{self}.get_node_remote_hardware_pins(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client'
         )
 
         # Ask the node to enter DFU / UF2 mode.
         #{self}.enter_dfu(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client'
         )
 
         # Delete a file on the node filesystem.
@@ -640,7 +675,7 @@ module Meshtastic
 
         # Clear the fixed GPS position on the node.
         #{self}.remove_fixed_position(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client'
         )
 
         # Set node wall-clock time.
@@ -650,7 +685,7 @@ module Meshtastic
 
         # Request DeviceUIConfig.
         #{self}.get_ui_config(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client'
         )
 
         # Store DeviceUIConfig on the node.
@@ -675,12 +710,12 @@ module Meshtastic
 
         # Open a settings edit transaction.
         #{self}.begin_edit(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client'
         )
 
         # Commit a settings edit transaction.
         #{self}.commit_edit(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client'
         )
 
         # Add a SharedContact to the node.
@@ -705,13 +740,13 @@ module Meshtastic
 
         # Clear the node database.
         #{self}.nodedb_reset(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client',
           preserve_favorites: 'optional - retain favorite nodes (default true); some firmware roles always preserve favorites'
         )
 
         # Exit the firmware simulator if running.
         #{self}.exit_simulator(
-          serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+          transport_obj: 'required - actual connected Serial, Bluetooth, TCP handle or MQTT client'
         )
 
         # Write a SensorConfig protobuf.

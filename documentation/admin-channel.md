@@ -19,15 +19,15 @@ settings = Meshtastic::Admin::Channel.build_settings(
   module_settings: { position_precision: 13, is_muted: false }
 )
 Meshtastic::Admin::Channel.set(
-  serial_obj: serial_obj, index: 1, role: :SECONDARY, settings: settings
+  transport_obj: connection, index: 1, role: :SECONDARY, settings: settings
 )
-Meshtastic::Admin::Channel.get(serial_obj: serial_obj, index: 1)
+Meshtastic::Admin::Channel.get(transport_obj: connection, index: 1)
 
 # Explicitly disable a slot.
-Meshtastic::Admin::Channel.set(serial_obj: serial_obj, index: 1, role: :DISABLED)
+Meshtastic::Admin::Channel.set(transport_obj: connection, index: 1, role: :DISABLED)
 ```
 
-Admin transport/routing/authentication options pass through (`serial_obj`, `bluetooth_obj`, `tcp_obj`, `mqtt_obj`, `to`, `from`, `session_passkey`, etc.). Here `channel:` means a **Channel protobuf**, not the outgoing mesh transport channel selector; it is removed before delivery. Use the lower-level `Admin.set_channel(channel_settings: protobuf, channel: numeric_index, ...)` when a particular transport channel is necessary.
+Admin transport/routing/authentication options pass through (`transport_obj: connection`, `to`, `from`, `session_passkey`, etc.). Here `channel:` means a **Channel protobuf**, not the outgoing mesh transport channel selector; it is removed before delivery. Use the lower-level `Admin.set_channel(channel_settings: protobuf, channel: numeric_index, ...)` when a particular transport channel is necessary.
 
 ## Channel URLs
 
@@ -45,14 +45,14 @@ url = Meshtastic::Admin::Channel.export_url(
 channel_set = Meshtastic::Admin::Channel.import_url(url: url)
 
 # Only when replacement of slots from zero is intended:
-Meshtastic::Admin::Channel.apply_url(serial_obj: serial_obj, url: url)
+Meshtastic::Admin::Channel.apply_url(transport_obj: connection, url: url)
 ```
 
 **URLs contain channel keys.** Treat them as credentials: do not log, publish, or send them to third-party QR services. Export does not redact PSKs. A URL carries settings, not original slot indexes/roles: its first entry becomes primary when applied.
 
 ## Operational limits
 
-Writes are submissions, not delivery/persistence acknowledgements. No live hardware was exercised. No automatic reply collection, session-key acquisition, readback, edit transaction, rollback, or add-only merge is performed. URL application can partially succeed if transport or firmware fails mid-sequence, and changing LoRa/primary settings can disconnect remote administration. For radio use, manage edit transactions and ACK/readback through Admin as appropriate for the firmware; verify slots and LoRa configuration after writing.
+Writes are submissions, not delivery/persistence acknowledgements. No live hardware was exercised. Admin's automatic remote session-key acquisition applies. No automatic write-acknowledgment collection, readback, edit transaction, rollback, or add-only merge is performed. URL application can partially succeed if transport or firmware fails mid-sequence, and changing LoRa/primary settings can disconnect remote administration. For radio use, manage edit transactions and ACK/readback through Admin as appropriate for the firmware; verify slots and LoRa configuration after writing.
 
 ## Protocol evidence
 

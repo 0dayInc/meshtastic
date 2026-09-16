@@ -1,9 +1,100 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+
+RSpec.describe Meshtastic::Admin::Firmware do
+  it 'documents transport_obj rather than legacy connection keywords' do
+    expect { described_class.help }.to output(/transport_obj:/).to_stdout
+    expect { described_class.help }.not_to output(/serial_obj:|bluetooth_obj:|tcp_obj:|mqtt_obj:/).to_stdout
+  end
+end
 require 'socket'
 require 'digest'
 require 'tempfile'
+
+RSpec.describe Meshtastic::Admin::Firmware do
+  it 'dispatches Intel HEX to the explicit SWD programmer' do
+    expect(described_class.const_defined?(:Hex, false)).to be true
+    options = { protocol: :swd, bytes: ':00000001FF', expected_chip: :nrf52840 }
+    expect(described_class::Hex).to receive(:install).with(options).and_return(status: :verified)
+    expect(described_class.install(options.merge(format: :hex))).to eq(status: :verified)
+  end
+
+  it 'rejects legacy OTA connection keys explicitly before inference or file access' do
+    %i[serial_obj bluetooth_obj tcp_obj mqtt_obj].each do |key|
+      expect(Meshtastic::Admin).not_to receive(:send)
+      expect { described_class.request_ota(key => nil, firmware: '/missing') }
+        .to raise_error(ArgumentError, /#{key}.*transport_obj/)
+    end
+  end
+
+  it 'separates explicit OTA transfer selection from the Admin control handle' do
+    handle = { serial_conn: Object.new }
+    expect(Meshtastic::Admin).to receive(:send) do |options|
+      expect(options[:transport_obj]).to equal(handle)
+      expect(options).not_to have_key(:transfer)
+      expect(options[:ota_request].reboot_ota_mode).to eq(:OTA_WIFI)
+    end
+    described_class.request_ota(transport_obj: handle, transfer: :wifi, bytes: 'abc')
+  end
+
+  it 'requires an unambiguous supported transfer choice before sending OTA' do
+    invalid = [{ transport_obj: { serial_conn: Object.new } }, { transport_obj: MQTT::Client.new }, {},
+               { transfer: :mqtt }, { transfer: nil }, { transfer: :wifi, mode: :OTA_BLE },
+               { transfer: :ble, mode: :UNKNOWN }]
+    expect(Meshtastic::Admin).not_to receive(:send)
+    invalid.each do |options|
+      expect { described_class.request_ota(options.merge(bytes: 'abc')) }.to raise_error(ArgumentError, /transfer|mode/)
+    end
+  end
+
+  it 'infers OTA transfer only from a single Bluetooth or TCP control handle' do
+    tcp_socket = Object.new
+    [{ transport_obj: { bluetooth_conn: Object.new } },
+     { transport_obj: { tcp_socket: tcp_socket, serial_conn: tcp_socket } }].zip(%i[OTA_BLE OTA_WIFI]).each do |options, mode|
+      expect(Meshtastic::Admin).to receive(:send) { |request| expect(request[:ota_request].reboot_ota_mode).to eq(mode) }
+      described_class.request_ota(options.merge(bytes: 'abc'))
+    end
+  end
+
+  it 'dispatches explicit UF2 format to the mounted-volume installer' do
+    expect(described_class.const_defined?(:UF2, false)).to be true
+    options = { protocol: :uf2, bytes: 'UF2 fixture', mount: '/selected/volume' }
+    expect(described_class::UF2).to receive(:install).with(options).and_return(status: :copied)
+    expect(described_class.install(options.merge(format: :uf2))).to eq(status: :copied)
+  end
+
+  it 'rejects incompatible declared formats before invoking an installer' do
+    expect(described_class::BLE).not_to receive(:install)
+    expect(described_class::SerialBootloader).not_to receive(:install)
+    expect(described_class::NordicDFU).not_to receive(:install)
+    expect(Socket).not_to receive(:tcp)
+    { unified_wifi: :uf2, unified_ble: :zip, esp_rom: :hex, nordic_dfu: :bin }.each do |protocol, format|
+      expect { described_class.install(protocol: protocol, format: format, bytes: 'abc') }.to raise_error(ArgumentError, /format/)
+    end
+  end
+
+  it 'rejects UF2 ZIP and Intel HEX content before opening binary loaders' do
+    expect(described_class::BLE).not_to receive(:install)
+    expect(described_class::SerialBootloader).not_to receive(:install)
+    expect(Socket).not_to receive(:tcp)
+    images = ["#{[0x0a324655, 0x9e5d5157].pack('V2')}payload", "PK\x03\x04archive", ':020000040000FA\n']
+    %i[unified_wifi unified_ble esp_rom].each do |protocol|
+      images.each do |bytes|
+        expect { described_class.install(protocol: protocol, bytes: bytes) }.to raise_error(ArgumentError, /format/)
+      end
+    end
+  end
+
+  it 'rejects nonbinary filename formats even when their contents look binary' do
+    expect(described_class::BLE).not_to receive(:install)
+    Tempfile.create(['image', '.uf2']) do |file|
+      file.write('abc')
+      file.flush
+      expect { described_class.install(protocol: :unified_ble, format: :bin, firmware: file.path) }.to raise_error(ArgumentError, /format/)
+    end
+  end
+end
 
 RSpec.describe Meshtastic::Admin::Firmware do
   it 'dispatches explicitly to independent native bootloader protocols' do
@@ -37,6 +128,17 @@ RSpec.describe Meshtastic::Admin::Firmware do
       expect(described_class::BLE).not_to receive(:install)
       expect { described_class.install(protocol: :unified_ble, bytes: 'abc', verify: verify) }.to raise_error(ArgumentError)
     end
+  end
+
+  it 'uses transport_obj for reboot metadata but named keys for low-level lifecycle calls' do
+    handle = { serial_conn: Object.new, my_node_num: 123 }
+    expect(Meshtastic::Serial).to receive(:wait_for_config).with(serial_obj: handle, timeout: 1).and_return(handle)
+    expect(Meshtastic::Serial).to receive(:disconnect).with(serial_obj: handle)
+    expect(Meshtastic::Admin).to receive(:request).with(transport_obj: handle, get_device_metadata_request: true, timeout: 1)
+                                                  .and_return(value: Meshtastic::DeviceMetadata.new(firmware_version: 'expected'))
+    result = described_class.verify_reboot(transport: :serial, reconnect: ->(_options) { handle },
+                                           expected_version: 'expected', reboot_delay: 0, timeout: 1)
+    expect(result).to include(status: :boot_verified, node_num: 123)
   end
 
   it 'ignores cached metadata and checks a fresh correlated Admin reply after callback reconnect' do
@@ -170,6 +272,7 @@ describe Meshtastic::Admin::Firmware do
     [{ bytes: '' }, { bytes: 123 }, { bytes: nil }, { firmware: '/missing', bytes: 'abc' },
      { host: '' }, { port: 0 }, { timeout: 0 }, { timeout: Float::INFINITY },
      { retries: -1 }, { retry_delay: -1 }, { mode: :OTA_BLE }, { tcp_obj: Object.new },
+     { transport_obj: { tcp_socket: Object.new, serial_conn: Object.new } },
      { to: '!aabbccdd' }, { protocol: :unified_wifi, bluetooth_obj: Object.new }].each do |invalid|
       expect(Socket).not_to receive(:tcp)
       expect { described_class.install(defaults.merge(invalid)) }.to raise_error(ArgumentError)
@@ -197,7 +300,7 @@ describe Meshtastic::Admin::Firmware do
     end
     connection.define_singleton_method(:flush) { true }
     serial = { serial_conn: connection, my_node_num: 0xb0b }
-    described_class.request_ota(serial_obj: serial, bytes: 'abc', mode: :OTA_WIFI)
+    described_class.request_ota(transport_obj: serial, bytes: 'abc', mode: :OTA_WIFI)
     length = written.byteslice(2, 2).unpack1('n')
     packet = Meshtastic::ToRadio.decode(written.byteslice(4, length)).packet
     admin = Meshtastic::AdminMessage.decode(packet.decoded.payload)
@@ -205,7 +308,7 @@ describe Meshtastic::Admin::Firmware do
     expect(admin.ota_request.reboot_ota_mode).to eq(:OTA_WIFI)
     expect(admin.ota_request.ota_hash).to eq(Digest::SHA256.digest('abc'))
     written.clear
-    described_class.enter_dfu(serial_obj: serial)
+    described_class.enter_dfu(transport_obj: serial)
     length = written.byteslice(2, 2).unpack1('n')
     packet = Meshtastic::ToRadio.decode(written.byteslice(4, length)).packet
     expect(Meshtastic::AdminMessage.decode(packet.decoded.payload).enter_dfu_mode_request).to be true
@@ -306,7 +409,7 @@ describe Meshtastic::Admin::Firmware do
   end
 
   it 'rejects PhoneAPI and MQTT installation without sending any commands' do
-    %i[serial_obj tcp_obj bluetooth_obj mqtt_obj].each do |transport|
+    %i[transport_obj serial_obj tcp_obj bluetooth_obj mqtt_obj].each do |transport|
       expect(Meshtastic::Admin).not_to receive(:send)
       expect { described_class.install(transport => Object.new, bytes: 'abc') }
         .to raise_error(NotImplementedError, /unified_wifi/)

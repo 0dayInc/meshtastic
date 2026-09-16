@@ -2,6 +2,13 @@
 
 require 'spec_helper'
 
+RSpec.describe Meshtastic::Admin::Channel do
+  it 'documents transport_obj rather than legacy connection keywords' do
+    expect { described_class.help }.to output(/transport_obj:/).to_stdout
+    expect { described_class.help }.not_to output(/serial_obj:|bluetooth_obj:|tcp_obj:|mqtt_obj:/).to_stdout
+  end
+end
+
 shared_context 'channel serial framing' do
   def fake_serial_obj
     written = +''.b
@@ -26,16 +33,23 @@ end
 describe Meshtastic::Admin::Channel do
   include_context 'channel serial framing'
 
+  it 'rejects legacy connection keys before filtering or building channel options' do
+    %i[serial_obj bluetooth_obj tcp_obj mqtt_obj].each do |key|
+      expect { described_class.set(transport_obj: fake_serial_obj, key => nil, index: -1) }
+        .to raise_error(ArgumentError, /#{key}.*transport_obj/)
+    end
+  end
+
   it 'requests a channel by index via Admin' do
     serial_obj = fake_serial_obj
-    described_class.get(serial_obj: serial_obj, index: 1)
+    described_class.get(transport_obj: serial_obj, index: 1)
     expect(decode_admin(serial_obj).get_channel_request).to eq(2)
   end
 
   [0, 7].each do |index|
     it "requests zero-based slot #{index} with its one-based wire index" do
       serial_obj = fake_serial_obj
-      described_class.get(serial_obj: serial_obj, index: index)
+      described_class.get(transport_obj: serial_obj, index: index)
       expect(decode_admin(serial_obj).get_channel_request).to eq(index + 1)
     end
   end
@@ -43,7 +57,7 @@ describe Meshtastic::Admin::Channel do
   it 'sets a Channel protobuf including settings and role' do
     serial_obj = fake_serial_obj
     settings = described_class.build_settings(name: 'LongFast', uplink_enabled: true)
-    described_class.set(serial_obj: serial_obj, index: 0, role: :PRIMARY, settings: settings)
+    described_class.set(transport_obj: serial_obj, index: 0, role: :PRIMARY, settings: settings)
     channel = decode_admin(serial_obj).set_channel
     expect(channel.index).to eq(0)
     expect(channel.role).to eq(:PRIMARY)
@@ -124,7 +138,7 @@ describe Meshtastic::Admin::Channel, 'channel URL support' do
   it 'rejects invalid settings lengths and slot indexes before any write' do
     [-1, 8, 0.5, 'junk'].each do |index|
       serial_obj = fake_serial_obj
-      expect { described_class.set(serial_obj: serial_obj, index: index, role: :PRIMARY) }.to raise_error(ArgumentError)
+      expect { described_class.set(transport_obj: serial_obj, index: index, role: :PRIMARY) }.to raise_error(ArgumentError)
       expect(serial_obj[:written]).to be_empty
     end
     expect { described_class.build_settings(psk: 'bad') }.to raise_error(ArgumentError)
@@ -137,7 +151,7 @@ describe Meshtastic::Admin::Channel, 'channel URL support' do
   it 'validates and overlays supplied channel/settings before transmission' do
     serial_obj = fake_serial_obj
     original = Meshtastic::Channel.new(index: 2, role: :SECONDARY, settings: { name: 'before', uplink_enabled: true })
-    described_class.set(serial_obj: serial_obj, channel: original, name: 'after', uplink_enabled: false)
+    described_class.set(transport_obj: serial_obj, channel: original, name: 'after', uplink_enabled: false)
     written = decode_admin(serial_obj).set_channel
     expect(written.index).to eq(2)
     expect(written.settings.name).to eq('after')
@@ -145,7 +159,7 @@ describe Meshtastic::Admin::Channel, 'channel URL support' do
     expect(original.settings.name).to eq('before')
     expect(described_class.build(settings: { name: 'hash' }).settings.name).to eq('hash')
     invalid = Meshtastic::Channel.new(index: 8)
-    expect { described_class.set(serial_obj: fake_serial_obj, channel: invalid) }.to raise_error(ArgumentError)
+    expect { described_class.set(transport_obj: fake_serial_obj, channel: invalid) }.to raise_error(ArgumentError)
     expect { described_class.build(settings: { psk: 'bad' }) }.to raise_error(ArgumentError)
   end
 
@@ -153,7 +167,7 @@ describe Meshtastic::Admin::Channel, 'channel URL support' do
     serial_obj = fake_serial_obj
     channel_set = Meshtastic::ChannelSet.new(settings: [{ name: 'main' }, { name: 'other' }], lora_config: { region: :US })
     url = "https://meshtastic.org/e/##{Base64.urlsafe_encode64(channel_set.to_proto, padding: false)}"
-    results = described_class.apply_url(serial_obj: serial_obj, url: url, session_passkey: 'test-key')
+    results = described_class.apply_url(transport_obj: serial_obj, url: url, session_passkey: 'test-key')
     frames = serial_obj[:written].dup
     messages = []
     until frames.empty?
@@ -176,11 +190,11 @@ describe Meshtastic::Admin::Channel, 'channel URL support' do
     serial_obj = fake_serial_obj
     invalid = Meshtastic::ChannelSet.new(settings: [{ name: 'good' }, { psk: 'bad' }])
     url = "https://meshtastic.org/e/##{Base64.urlsafe_encode64(invalid.to_proto, padding: false)}"
-    expect { described_class.apply_url(serial_obj: serial_obj, url: url) }.to raise_error(ArgumentError)
+    expect { described_class.apply_url(transport_obj: serial_obj, url: url) }.to raise_error(ArgumentError)
     expect(serial_obj[:written]).to be_empty
     valid = Meshtastic::ChannelSet.new(settings: [{ name: 'test' }])
     url = "https://meshtastic.org/e/?add=true##{Base64.urlsafe_encode64(valid.to_proto, padding: false)}"
-    expect { described_class.apply_url(serial_obj: serial_obj, url: url) }.to raise_error(ArgumentError, /add-only/)
+    expect { described_class.apply_url(transport_obj: serial_obj, url: url) }.to raise_error(ArgumentError, /add-only/)
     expect(serial_obj[:written]).to be_empty
   end
 

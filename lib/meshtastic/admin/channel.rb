@@ -51,6 +51,9 @@ module Meshtastic
       end
 
       public_class_method def self.set(opts = {})
+        legacy = opts.keys & %i[serial_obj bluetooth_obj tcp_obj mqtt_obj]
+        raise ArgumentError, "#{legacy.join(', ')} are unsupported; use transport_obj" unless legacy.empty?
+
         channel = build(opts.merge({}))
         builder_keys = Meshtastic::ChannelSettings.descriptor.map { |field| field.name.to_sym } + %i[channel index role settings]
         merged = opts.except(*builder_keys).merge(channel_settings: channel)
@@ -126,13 +129,13 @@ module Meshtastic
 
           # Request a channel slot from the node.
           #{self}.get(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client',
             index: 'optional - zero-based channel slot; Admin adds one on wire (default: 0)'
           )
 
           # Write a channel slot on the node.
           #{self}.set(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client',
             channel: 'optional - Channel protobuf to write',
             index: 'optional - channel slot index when building a channel',
             role: 'optional - :PRIMARY, :SECONDARY, or :DISABLED',
@@ -152,7 +155,7 @@ module Meshtastic
           # Write URL channels and optional LoRa configuration.
           #{self}.apply_url(
             url: 'required - Meshtastic channel URL replacing slots from zero',
-            serial_obj: 'optional - connected serial transport; BLE, TCP, MQTT also supported'
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client'
           )
 
           # Print the AUTHOR(S) string for this module.

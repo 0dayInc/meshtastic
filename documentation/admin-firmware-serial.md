@@ -47,7 +47,7 @@ Supply exactly one of `firmware:` (path) or `bytes:` (binary String). `protocol:
 is optional on the direct backend and defaults to `:esp_rom`. Unknown options
 raise `ArgumentError` before opening the serial device.
 
-- `port:` is a required dedicated serial device path, **not** `serial_obj:` from
+- `port:` is a required dedicated serial device path, **not** `transport_obj:` from
   an active Meshtastic PhoneAPI connection. Close that connection and stop its
   reader before installing. Never flash while another process uses this port.
 - `chip:` is required and must match both the image header and the connected ROM.

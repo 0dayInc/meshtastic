@@ -27,9 +27,68 @@ end
 describe Meshtastic::Admin do
   include AdminSpecHelpers
 
+  it 'classifies actual connected transport shapes with TCP taking precedence over serial framing' do
+    serial = fake_serial_obj
+    expect(described_class.transport_type(transport_obj: serial)).to eq(:serial)
+    expect(described_class.transport_type(transport_obj: serial.merge(tcp_socket: serial[:serial_conn]))).to eq(:tcp)
+    expect(described_class.transport_type(transport_obj: { bluetooth_conn: Object.new })).to eq(:bluetooth)
+    expect(described_class.transport_type(transport_obj: MQTTClient.new)).to eq(:mqtt)
+  end
+
+  it 'rejects missing, unknown and ambiguous transport handles' do
+    [nil, Object.new, {}, { serial_conn: nil }, { tcp_socket: Object.new }, { tcp_socket: nil, serial_conn: Object.new },
+     { bluetooth_conn: Object.new, serial_conn: Object.new },
+     { bluetooth_conn: Object.new, tcp_socket: Object.new, serial_conn: Object.new }].each do |handle|
+      expect { described_class.transport_type(transport_obj: handle) }.to raise_error(ArgumentError, /transport_obj/)
+    end
+  end
+
+  it 'rejects legacy transport options with migration guidance even alongside transport_obj' do
+    %i[serial_obj bluetooth_obj tcp_obj mqtt_obj].each do |key|
+      %i[transport_type encode decode response send request reboot].each do |method|
+        [nil, fake_serial_obj].each do |handle|
+          options = { key => nil, transport_obj: handle }
+          options[:get_owner_request] = true unless %i[transport_type reboot].include?(method)
+          expect { described_class.public_send(method, options) }.to raise_error(ArgumentError, /#{key}.*use transport_obj:/)
+        end
+      end
+    end
+  end
+
+  it 'maps only the inferred transport key at the delivery boundary without changing caller options' do
+    serial = fake_serial_obj
+    handles = { serial: serial, tcp: serial.merge(tcp_socket: serial[:serial_conn]),
+                bluetooth: { bluetooth_conn: Object.new, my_node_num: 0xb0b }, mqtt: MQTTClient.new }
+    handles.each do |type, handle|
+      options = { transport_obj: handle, to: '!aabbccdd', get_owner_request: true }
+      expect(Meshtastic).to receive(:deliver_data) do |delivery|
+        expect(delivery.keys & %i[serial_obj bluetooth_obj tcp_obj mqtt_obj]).to eq([:"#{type}_obj"])
+        expect(delivery[:"#{type}_obj"]).to equal(handle)
+        expect(delivery).not_to have_key(:transport_obj)
+      end
+      described_class.send(options)
+      expect(options).to eq(transport_obj: handle, to: '!aabbccdd', get_owner_request: true)
+    end
+  end
+
+  it 'publishes MQTT Admin protobufs with an explicit passkey but rejects synchronous readback and PKI' do
+    client = MQTTClient.new(client_id: 'aabbccdd')
+    published = []
+    client.define_singleton_method(:publish) { |topic, bytes| published << [topic, bytes] }
+    options = { transport_obj: client, to: '!aabbccee', session_passkey: '12345678', psks: { LongFast: 'AQ==' } }
+    described_class.reboot(options)
+    expect(published.length).to eq(1)
+    envelope = Meshtastic::ServiceEnvelope.decode(published.first.last)
+    expect(envelope.packet.to).to eq(0xaabbccee)
+    expect(envelope.packet.encrypted).not_to be_empty
+    expect { described_class.request(options.merge(get_owner_request: true)) }.to raise_error(ArgumentError, /receive queue/)
+    expect { described_class.reboot(options.merge(pki_encrypted: true)) }.to raise_error(ArgumentError, /PKI|pki|public.key/)
+    expect(published.length).to eq(1)
+  end
+
   it 'sends a reboot AdminMessage on ADMIN_APP' do
     serial_obj = fake_serial_obj
-    described_class.reboot(serial_obj: serial_obj, seconds: 7)
+    described_class.reboot(transport_obj: serial_obj, seconds: 7)
     packet, admin = decode_admin(serial_obj)
     expect(packet.decoded.portnum).to eq(:ADMIN_APP)
     expect(admin.reboot_seconds).to eq(7)
@@ -37,7 +96,7 @@ describe Meshtastic::Admin do
 
   it 'sends a set_owner AdminMessage' do
     serial_obj = fake_serial_obj
-    described_class.set_owner(serial_obj: serial_obj, long_name: 'Test Node', short_name: 'TN')
+    described_class.set_owner(transport_obj: serial_obj, long_name: 'Test Node', short_name: 'TN')
     _packet, admin = decode_admin(serial_obj)
     expect(admin.set_owner.long_name).to eq('Test Node')
     expect(admin.set_owner.short_name).to eq('TN')
@@ -62,7 +121,7 @@ describe Meshtastic::Admin do
     }
     examples.each do |meth, (field, expected)|
       serial_obj[:written].clear
-      described_class.public_send(meth, serial_obj: serial_obj)
+      described_class.public_send(meth, transport_obj: serial_obj)
       _packet, admin = decode_admin(serial_obj)
       expect(admin.public_send(field)).to eq(expected), meth.to_s
     end
@@ -70,16 +129,16 @@ describe Meshtastic::Admin do
 
   it 'sends factory resets, file delete, favorites, and edit transactions' do
     serial_obj = fake_serial_obj
-    described_class.factory_reset_config(serial_obj: serial_obj)
+    described_class.factory_reset_config(transport_obj: serial_obj)
     expect(decode_admin(serial_obj).last.factory_reset_config).to eq(1)
     serial_obj[:written].clear
-    described_class.factory_reset_device(serial_obj: serial_obj)
+    described_class.factory_reset_device(transport_obj: serial_obj)
     expect(decode_admin(serial_obj).last.factory_reset_device).to eq(1)
     serial_obj[:written].clear
-    described_class.delete_file(serial_obj: serial_obj, path: '/prefs.json')
+    described_class.delete_file(transport_obj: serial_obj, path: '/prefs.json')
     expect(decode_admin(serial_obj).last.delete_file_request).to eq('/prefs.json')
     serial_obj[:written].clear
-    described_class.set_favorite_node(serial_obj: serial_obj, node_num: 0xb0b)
+    described_class.set_favorite_node(transport_obj: serial_obj, node_num: 0xb0b)
     expect(decode_admin(serial_obj).last.set_favorite_node).to eq(0xb0b)
   end
 end
@@ -117,11 +176,11 @@ describe Meshtastic::Admin, 'automatic sessions' do
       reply = Meshtastic::AdminMessage.new(get_config_response: Meshtastic::Config.new, session_passkey: '12345678')
       connection[:from_radio_queue] << admin_reply(packet, message: reply)
     end
-    2.times { described_class.set_owner(serial_obj: handle, to: '!aabbccdd', long_name: 'Remote', timeout: 0.2) }
+    2.times { described_class.set_owner(transport_obj: handle, to: '!aabbccdd', long_name: 'Remote', timeout: 0.2) }
     messages = handle[:sent].map { |packet| Meshtastic::AdminMessage.decode(packet.decoded.payload) }
     expect(messages.map(&:payload_variant)).to eq(%i[get_config_request set_owner set_owner])
     expect(messages.drop(1).map(&:session_passkey)).to eq(%w[12345678 12345678])
-    described_class.set_owner(serial_obj: handle, to: '!aabbccee', long_name: 'Other', timeout: 0.2)
+    described_class.set_owner(transport_obj: handle, to: '!aabbccee', long_name: 'Other', timeout: 0.2)
     expect(handle[:sent].length).to eq(5)
   end
 
@@ -137,7 +196,7 @@ describe Meshtastic::Admin, 'automatic sessions' do
                                                                                                       decoded: Meshtastic::Data.new(portnum: :ROUTING_APP, request_id: packet.id, payload: Meshtastic::Routing.new(error_reason: reason).to_proto)))
       end
     end
-    options = { serial_obj: handle, to: '!aabbccdd', reboot_seconds: 5, timeout: 0.2 }
+    options = { transport_obj: handle, to: '!aabbccdd', reboot_seconds: 5, timeout: 0.2 }
     expect(described_class.request(options)).to include(variant: :routing, value: :NONE)
     reason = :ADMIN_BAD_SESSION_KEY
     expect { described_class.request(options) }.to raise_error(Meshtastic::Admin::RoutingError)
@@ -156,7 +215,7 @@ describe Meshtastic::Admin, 'automatic sessions' do
       reply = Meshtastic::AdminMessage.new(get_config_response: Meshtastic::Config.new, session_passkey: key)
       connection[:from_radio_queue] << admin_reply(packet, message: reply)
     end
-    options = { serial_obj: handle, to: '!aabbccdd', timeout: 0.5 }
+    options = { transport_obj: handle, to: '!aabbccdd', timeout: 0.5 }
     described_class.request(options.merge(get_config_request: :SESSIONKEY_CONFIG))
     described_class.reboot(options)
     expect(handle[:sent].length).to eq(2)
@@ -174,7 +233,7 @@ describe Meshtastic::Admin, 'automatic sessions' do
       connection[:from_radio_queue] << admin_reply(packet, message: Meshtastic::AdminMessage.new(get_config_response: Meshtastic::Config.new))
     end
     handle[:admin_sessions] = { 0xaabbccdd => { key: 'old-key!', expires_at: Process.clock_gettime(Process::CLOCK_MONOTONIC) + 100 } }
-    options = { serial_obj: handle, to: '!aabbccdd', timeout: 0.2 }
+    options = { transport_obj: handle, to: '!aabbccdd', timeout: 0.2 }
     expect { described_class.reboot(options.merge(refresh_session: true)) }.to raise_error(ArgumentError, /eight-byte/)
     expect { described_class.reboot(options) }.to raise_error(ArgumentError, /eight-byte/)
     expect(handle[:sent].map { |packet| Meshtastic::AdminMessage.decode(packet.decoded.payload).payload_variant }).to eq(%i[get_config_request get_config_request])
@@ -184,7 +243,7 @@ describe Meshtastic::Admin, 'automatic sessions' do
     handle = responding_serial { |_connection, _packet| nil }
     expect do
       Timeout.timeout(0.5, RuntimeError, 'outer deadline exceeded') do
-        described_class.request(serial_obj: handle, to: '!aabbccdd', reboot_seconds: 5, wait: false, timeout: 0.15)
+        described_class.request(transport_obj: handle, to: '!aabbccdd', reboot_seconds: 5, wait: false, timeout: 0.15)
       end
     end.to raise_error(Timeout::Error, /Admin response/)
     expect(handle[:sent].length).to eq(1)
@@ -198,11 +257,11 @@ describe Meshtastic::Admin, 'automatic sessions' do
       release.pop
       connection[:from_radio_queue] << admin_reply(packet)
     end
-    worker = Thread.new { described_class.request(serial_obj: handle, get_device_metadata_request: true, timeout: 1) }
+    worker = Thread.new { described_class.request(transport_obj: handle, get_device_metadata_request: true, timeout: 1) }
     entered.pop
     begin
       expect do
-        Timeout.timeout(0.3) { described_class.request(serial_obj: handle, get_device_metadata_request: true, timeout: 0.1) }
+        Timeout.timeout(0.3) { described_class.request(transport_obj: handle, get_device_metadata_request: true, timeout: 0.1) }
       end.to raise_error(IOError, /already active/)
     ensure
       release << true
@@ -224,14 +283,16 @@ describe Meshtastic::Admin, 'synchronous requests' do
       connection[:from_radio_queue] << unrelated
       connection[:from_radio_queue] << admin_reply(packet)
     end
-    expect(described_class.request(serial_obj: handle, get_device_metadata_request: true, timeout: 0.2)[:value].firmware_version).to eq('test-version')
+    expect(described_class.request(transport_obj: handle, get_device_metadata_request: true, timeout: 0.2)[:value].firmware_version).to eq('test-version')
     expect(handle[:from_radio_queue].pop(true)).to eq(unrelated)
   end
 
   %i[tcp_obj bluetooth_obj].each do |transport|
     it "reads correlated replies through the real #{transport} send path" do
       handle = if transport == :tcp_obj
-                 responding_serial { |connection, packet| connection[:from_radio_queue] << admin_reply(packet) }
+                 responding_serial { |connection, packet| connection[:from_radio_queue] << admin_reply(packet) }.tap do |tcp|
+                   tcp[:tcp_socket] = tcp[:serial_conn]
+                 end
                else
                  { my_node_num: 0xb0b, from_radio_queue: Queue.new, tx_mutex: Mutex.new, bluetooth_conn: Object.new }
                end
@@ -243,7 +304,7 @@ describe Meshtastic::Admin, 'synchronous requests' do
           bytes.bytesize
         end
       end
-      result = described_class.request(transport => handle, get_device_metadata_request: true, timeout: 0.5)
+      result = described_class.request(transport_obj: handle, get_device_metadata_request: true, timeout: 0.5)
       expect(result[:value].firmware_version).to eq('test-version')
     end
   end
@@ -257,7 +318,7 @@ describe Meshtastic::Admin, 'synchronous requests' do
       preserved.each { |message| connection[:from_radio_queue] << message }
     end
     start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    expect { described_class.request(serial_obj: handle, get_device_metadata_request: true, timeout: 0.15) }.to raise_error(Timeout::Error)
+    expect { described_class.request(transport_obj: handle, get_device_metadata_request: true, timeout: 0.15) }.to raise_error(Timeout::Error)
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - start).to be < 0.6
     expect(preserved.map { handle[:from_radio_queue].pop(true) }).to eq(preserved)
   end
@@ -267,18 +328,18 @@ describe Meshtastic::Admin, 'synchronous requests' do
       connection[:from_radio_queue] << admin_reply(packet, message: Meshtastic::AdminMessage.new(get_config_response: Meshtastic::Config.new))
     end
     expect do
-      described_class.reboot(serial_obj: handle, to: '!aabbccdd', timeout: 0.2)
+      described_class.reboot(transport_obj: handle, to: '!aabbccdd', timeout: 0.2)
     end.to raise_error(ArgumentError, /eight-byte passkey/)
     expect(handle[:sent].map { |packet| Meshtastic::AdminMessage.decode(packet.decoded.payload).payload_variant }).to eq([:get_config_request])
     expect do
-      described_class.reboot(mqtt_obj: Object.new, to: '!aabbccdd')
+      described_class.reboot(transport_obj: MQTTClient.new, to: '!aabbccdd')
     end.to raise_error(ArgumentError, /supply session_passkey/)
   end
 
   it 'rejects invalid timeouts before submitting any data' do
     handle = responding_serial { |_connection, _packet| raise 'must not send' }
     [0, -1, nil, Float::INFINITY, Float::NAN, '1'].each do |timeout|
-      expect { described_class.request(serial_obj: handle, get_owner_request: true, timeout: timeout) }.to raise_error(ArgumentError, /timeout/)
+      expect { described_class.request(transport_obj: handle, get_owner_request: true, timeout: timeout) }.to raise_error(ArgumentError, /timeout/)
     end
     expect(handle[:sent]).to be_empty
   end
@@ -290,7 +351,7 @@ describe Meshtastic::Admin, 'synchronous requests' do
       connection[:from_radio_queue].close
     end
     expect do
-      described_class.request(serial_obj: handle, get_owner_request: true, timeout: 0.2)
+      described_class.request(transport_obj: handle, get_owner_request: true, timeout: 0.2)
     end.to raise_error(Timeout::Error)
     expect(handle[:from_radio_queue].pop(true)).to eq(unrelated)
     expect(handle[:from_radio_queue]).to be_closed
@@ -306,7 +367,7 @@ describe Meshtastic::Admin, 'synchronous requests' do
       end
     end
     expect do
-      described_class.request(serial_obj: handle, to: '!aabbccdd', get_device_metadata_request: true, timeout: 0.1)
+      described_class.request(transport_obj: handle, to: '!aabbccdd', get_device_metadata_request: true, timeout: 0.1)
     end.to raise_error(Meshtastic::Admin::RoutingError, /NOT_AUTHORIZED/)
     expect(handle[:from_radio_queue].size).to eq(1)
   end
@@ -320,7 +381,7 @@ describe Meshtastic::Admin, 'synchronous requests' do
       unrelated.each { |message| connection[:from_radio_queue] << message }
       connection[:from_radio_queue] << admin_reply(packet)
     end
-    result = described_class.request(serial_obj: handle, message: Meshtastic::AdminMessage.new(get_device_metadata_request: true), timeout: 0.2)
+    result = described_class.request(transport_obj: handle, message: Meshtastic::AdminMessage.new(get_device_metadata_request: true), timeout: 0.2)
     expect(result[:value].firmware_version).to eq('test-version')
     expect(result[:request_id]).to eq(handle[:sent].last.id)
     expect(unrelated.map { handle[:from_radio_queue].pop(true) }).to eq(unrelated)
@@ -352,11 +413,11 @@ describe Meshtastic::Admin, 'validation and response handling' do
     serial_obj = fake_serial_obj
     [0, 7].each do |index|
       serial_obj[:written].clear
-      described_class.get_channel(serial_obj: serial_obj, index: index)
+      described_class.get_channel(transport_obj: serial_obj, index: index)
       expect(decode_admin(serial_obj).last.get_channel_request).to eq(index + 1)
     end
     [-1, 8, '1', 1.5].each do |index|
-      expect { described_class.get_channel(serial_obj: serial_obj, index: index) }.to raise_error(ArgumentError)
+      expect { described_class.get_channel(transport_obj: serial_obj, index: index) }.to raise_error(ArgumentError)
     end
   end
 
@@ -376,20 +437,20 @@ describe Meshtastic::Admin, 'validation and response handling' do
 
   it 'targets the connected node locally and requests replies only for getters by default' do
     serial_obj = fake_serial_obj
-    described_class.reboot(serial_obj: serial_obj)
+    described_class.reboot(transport_obj: serial_obj)
     packet, = decode_admin(serial_obj)
     expect(packet.to).to eq(0xb0b)
     expect(packet.from).to eq(0)
     expect(packet.decoded.want_response).to be(false)
     serial_obj[:written].clear
-    described_class.get_owner(serial_obj: serial_obj)
+    described_class.get_owner(transport_obj: serial_obj)
     expect(decode_admin(serial_obj).first.decoded.want_response).to be(true)
     serial_obj[:written].clear
-    described_class.reboot(serial_obj: serial_obj, to: '!aabbccdd', want_response: true, auto_session: false)
+    described_class.reboot(transport_obj: serial_obj, to: '!aabbccdd', want_response: true, auto_session: false)
     expect(decode_admin(serial_obj).first.to).to eq(0xaabbccdd)
     expect(decode_admin(serial_obj).first.decoded.want_response).to be(true)
-    expect { described_class.get_owner(mqtt_obj: Object.new) }.to raise_error(ArgumentError, /destination/)
-    expect { described_class.get_owner(serial_obj: serial_obj, to: '!ffffffff') }.to raise_error(ArgumentError, /destination/)
+    expect { described_class.get_owner(transport_obj: MQTTClient.new) }.to raise_error(ArgumentError, /destination/)
+    expect { described_class.get_owner(transport_obj: serial_obj, to: '!ffffffff') }.to raise_error(ArgumentError, /destination/)
   end
 
   it 'decodes admin responses and correlates without consuming transport queues' do
@@ -410,13 +471,13 @@ describe Meshtastic::Admin, 'validation and response handling' do
   it 'supports OTA wire operations and resetting all nodes explicitly' do
     serial_obj = fake_serial_obj
     event = Meshtastic::AdminMessage::OTAEvent.new(reboot_ota_mode: :OTA_BLE, ota_hash: 'x' * 32)
-    described_class.ota_request(serial_obj: serial_obj, event: event)
+    described_class.ota_request(transport_obj: serial_obj, event: event)
     expect(decode_admin(serial_obj).last.ota_request).to eq(event)
     serial_obj[:written].clear
-    described_class.reboot_ota(serial_obj: serial_obj, seconds: -1)
+    described_class.reboot_ota(transport_obj: serial_obj, seconds: -1)
     expect(decode_admin(serial_obj).last.reboot_ota_seconds).to eq(-1)
     serial_obj[:written].clear
-    described_class.nodedb_reset(serial_obj: serial_obj, preserve_favorites: false)
+    described_class.nodedb_reset(transport_obj: serial_obj, preserve_favorites: false)
     expect(decode_admin(serial_obj).last.payload_variant).to eq(:nodedb_reset)
     expect(decode_admin(serial_obj).last.nodedb_reset).to be(false)
   end
@@ -424,21 +485,21 @@ describe Meshtastic::Admin, 'validation and response handling' do
   it 'does not turn omitted required values into zero or empty destructive commands' do
     serial_obj = fake_serial_obj
     %i[delete_file set_scale set_time set_canned_messages set_ringtone remove_by_nodenum set_favorite_node remove_favorite_node set_ignored_node remove_ignored_node toggle_muted_node].each do |method|
-      expect { described_class.public_send(method, serial_obj: serial_obj) }.to raise_error(ArgumentError), method.to_s
+      expect { described_class.public_send(method, transport_obj: serial_obj) }.to raise_error(ArgumentError), method.to_s
     end
     expect(serial_obj[:written]).to be_empty
-    described_class.set_canned_messages(serial_obj: serial_obj, messages: '')
+    described_class.set_canned_messages(transport_obj: serial_obj, messages: '')
     expect(decode_admin(serial_obj).last.payload_variant).to eq(:set_canned_message_module_messages)
   end
 
   it 'returns the actual transmitted request ID for later response correlation' do
     serial_obj = fake_serial_obj
-    result = described_class.request(serial_obj: serial_obj, get_owner_request: true, request_id: 1234, wait: false)
+    result = described_class.request(transport_obj: serial_obj, get_owner_request: true, request_id: 1234, wait: false)
     expect(result[:request_id]).to eq(1234)
     expect(decode_admin(serial_obj).first.id).to eq(1234)
-    expect { described_class.request(serial_obj: serial_obj, get_owner_request: true, request_id: 0) }.to raise_error(ArgumentError)
+    expect { described_class.request(transport_obj: serial_obj, get_owner_request: true, request_id: 0) }.to raise_error(ArgumentError)
     serial_obj[:written].clear
-    result = described_class.request(serial_obj: serial_obj, get_config_request: :SESSIONKEY_CONFIG, wait: false)
+    result = described_class.request(transport_obj: serial_obj, get_config_request: :SESSIONKEY_CONFIG, wait: false)
     expect(result[:request_id]).to eq(decode_admin(serial_obj).first.id)
     expect(result[:request_id]).to be_positive
   end
@@ -448,6 +509,11 @@ describe Meshtastic::Admin, 'validation and response handling' do
       expect { described_class.encode(get_owner_request: true, session_passkey: key) }.to raise_error(ArgumentError, /eight bytes/)
     end
     expect(described_class.encode(get_owner_request: true, session_passkey: "\x00" * 8).session_passkey.bytesize).to eq(8)
+  end
+
+  it 'documents the public classifier and the sole Admin transport option' do
+    expect { described_class.help }.to output(/Meshtastic::Admin.transport_type\(.*transport_obj:.*:serial.*:bluetooth.*:tcp.*:mqtt/m).to_stdout
+    expect { described_class.help }.not_to output(/(?:serial_obj|bluetooth_obj|tcp_obj|mqtt_obj):/).to_stdout
   end
 
   it 'prints usage without raising' do

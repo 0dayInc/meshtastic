@@ -3,6 +3,53 @@
 require 'spec_helper'
 
 describe Meshtastic::RTTTL do
+  %i[serial_obj bluetooth_obj tcp_obj mqtt_obj transport_obj].each do |key|
+    it "translates #{key} to the Admin connection option without mutating options" do
+      connection = { marker: Object.new }
+      options = { key => connection, to: '!aabbccdd' }.freeze
+      expect(Meshtastic::Admin).to receive(:send).with({ transport_obj: connection, to: '!aabbccdd', get_ringtone_request: true }).and_return(:submitted)
+      expect(described_class.get(options)).to eq(:submitted)
+    end
+
+    it "translates #{key} for setters" do
+      connection = { marker: Object.new }
+      value = 'beep:d=4,o=5,b=120:16c6'
+      expect(Meshtastic::Admin).to receive(:send).with({ transport_obj: connection, ringtone: value, set_ringtone_message: value }).and_return(:submitted)
+      expect(described_class.set({ key => connection, ringtone: value }.freeze)).to eq(:submitted)
+    end
+  end
+
+  %i[get set].each do |operation|
+    %i[transport_obj serial_obj bluetooth_obj tcp_obj mqtt_obj].combination(2) do |first, second|
+      it "rejects ambiguous #{first}/#{second} connections for #{operation}" do
+        connection = fake_serial_obj
+        expect(Meshtastic::Admin).not_to receive(:send)
+        expect { described_class.public_send(operation, { first => connection, second => connection, ringtone: 'beep' }) }
+          .to raise_error(ArgumentError, /connection|transport/i)
+        expect(connection[:written]).to be_empty
+      end
+    end
+  end
+
+  it 'documents the canonical connection option in help' do
+    expect { described_class.help }.to output(/transport_obj: connection/).to_stdout
+  end
+
+  %i[serial_obj transport_obj].each do |key|
+    %i[get set].each do |operation|
+      it "encodes a real Admin packet for #{operation} with #{key}" do
+        connection = fake_serial_obj
+        options = { key => connection, ringtone: 'beep' }
+        options[:bluetooth_obj] = nil
+        described_class.public_send(operation, options.freeze)
+        frame = connection[:written]
+        packet = Meshtastic::ToRadio.decode(frame.byteslice(4, (frame.getbyte(2) << 8) + frame.getbyte(3))).packet
+        admin = Meshtastic::AdminMessage.decode(packet.decoded.payload)
+        expect(admin.payload_variant).to eq(operation == :get ? :get_ringtone_request : :set_ringtone_message)
+      end
+    end
+  end
+
   def fake_serial_obj
     written = +''.b
     serial_conn = Object.new

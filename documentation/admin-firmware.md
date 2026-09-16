@@ -7,17 +7,58 @@
 | Operation | What the Ruby implementation actually does |
 | --- | --- |
 | `sha256(firmware: ... \| bytes: ...)` | Returns a raw 32-byte SHA-256 digest. Exactly one nonempty image source is required. |
-| `request_ota(...)` | Sends the real ESP32 `OTAEvent` admin request: raw SHA-256 plus `:OTA_BLE` (default) or `:OTA_WIFI`. This pins the image hash and requests a reboot into an **already installed compatible loader**; it does not upload firmware or prove that the loader started. |
+| `request_ota(...)` | Sends the real ESP32 `OTAEvent` admin request: raw SHA-256 plus an explicit `transfer: :ble` or `transfer: :wifi` (or the documented handle inference below). This pins the image hash and requests a reboot into an **already installed compatible loader**; it does not upload firmware or prove that the loader started. |
 | `install(protocol: :unified_wifi, host: ..., firmware: ... \| bytes: ...)` | Separate ESP32 unified-loader TCP protocol, normally port 3232. Requires the image hash to have been provisioned using `request_ota`. |
 | `install(protocol: :unified_ble, address: ..., firmware: ... \| bytes: ...)` | ESP32 unified-loader custom GATT protocol, with a native Ruby BlueZ backend and application ACK flow control. Not the old BLE-only firmware-ota protocol. |
 | `install(protocol: :nordic_dfu, address: ..., package: ...)` | Adafruit SDK11 legacy Nordic BLE DFU for application-only legacy ZIP packages. [Exact scope and options](admin-firmware-nordic.md). Not Nordic Secure DFU or UF2. |
 | `install(protocol: :esp_rom, ...)` | Native ESP ROM serial flashing with explicit chip, flash geometry and offset, ROM acknowledgements and flash MD5 verification. [Exact scope and options](admin-firmware-serial.md). |
+| `install(protocol: :uf2, format: :uf2, ...)` | Validate and copy a UF2 image to an explicitly selected mounted bootloader volume. Copy completion is not flash or boot confirmation. See `UF2.help` for volume and image validation options. |
 | `verify_reboot(...)` or `install(..., verify: {...})` | Fresh application connection, matching configuration handshake and a new request-ID/source-correlated Admin device-metadata reply. Checks exact firmware version and optional node identity. |
 | `enter_dfu(...)` | Sends `enter_dfu_mode_request`; current upstream handles entry on nRF52/RP2040. It neither transfers a DFU package nor copies a UF2 image. |
 | `reboot_ota`, `xmodem_blocks`, `send_xmodem` | Raise `NotImplementedError`. The legacy reboot field has no handler in the inspected firmware; XModem is filesystem transfer, not firmware installation. |
 | `help`, `authors` | Usage and attribution. |
 
 Admin commands accept the transport, addressing, and authentication options documented in [Admin](admin.md). Use exactly one transport. Successful submission is **not confirmation that hardware supports or performed the operation**. A routing acknowledgement alone cannot prove an ESP32 OTA loader/partition exists. No automatic board detection is performed.
+
+## Control connection, transfer protocol, and image format
+
+These are separate choices:
+
+- **Control connection** (`transport_obj: connection`, the actual connected Serial, Bluetooth, TCP, or MQTT handle) carries an authenticated Admin preparation request to the running application. It does not carry the subsequent firmware bytes.
+- **OTA transfer** (`request_ota(transfer: :wifi | :ble)`) chooses the ESP32 loader mode after reboot. A serial control request with `transfer: :wifi` is intentional: USB carries the request, then a separate WiFi loader endpoint receives the image. There is no `transfer: :serial` or `:mqtt` unified updater.
+- **Installer protocol** (`install(protocol: ...)`) selects the actual data endpoint and wire protocol, not a PhoneAPI handle. Choose the matching unified WiFi/BLE loader, ESP serial ROM, legacy Nordic BLE DFU, or UF2 mounted-volume writer explicitly.
+- **Image format** (`install(format: :bin | :zip | :uf2)`) describes the artifact. It defaults to the selected protocol's format for compatibility, not to the filename. It never silently selects a different protocol.
+
+`request_ota` no longer silently defaults to BLE. With exactly one non-nil control handle, a Bluetooth handle infers `transfer: :ble` and a TCP handle infers `transfer: :wifi` as conveniences; these are not capability detection. Serial or MQTT handles require an explicit transfer or valid legacy `mode:`. A connected handle is required for the Admin request. Explicit transfer overrides handle inference (for example, a Bluetooth preparation request can select a WiFi loader). `mode: :OTA_WIFI` / `:OTA_BLE` remains supported; if both `mode` and `transfer` are supplied they must agree. Supply only `transport_obj:`; legacy transport-specific Admin keywords and ambiguous multi-transport handles are rejected.
+
+### Supported artifact inventory
+
+| Format | Installer protocol | Scope |
+| --- | --- | --- |
+| `:bin` | `:unified_wifi`, `:unified_ble` | Matching ESP32 application-update binary; not a merged factory image or bootloader. |
+| `:bin` | `:esp_rom` | ESP image with explicit supported chip, flash geometry and offset; see the serial installer documentation. |
+| `:zip` | `:nordic_dfu` | Application-only legacy Adafruit SDK11 Nordic DFU ZIP supplied through `package:` or `package_bytes:`; not any arbitrary ZIP or Secure DFU bundle. |
+| `:uf2` | `:uf2` | UF2 block image supplied through `firmware:` or `bytes:` to the separately selected mounted bootloader volume. |
+| `:hex` | `:swd` | nRF52840 Intel HEX through an explicitly configured OpenOCD/SWD programmer; [options and safety restrictions](admin-firmware-hex.md). |
+| Standalone DAT / arbitrary DFU | None | Unsupported as standalone install inputs; no universal conversion or board support is claimed. |
+
+A declared format/protocol mismatch is rejected before backend invocation. Binary routes also reject known UF2/ZIP/Intel HEX signatures and `.uf2`, `.zip`, `.hex`, `.dfu` filenames before connecting or erasing, including UF2 bytes renamed to `.bin`. Binary files are read once and the inspected bytes are passed to the backend. These guards are not a universal image validator: selecting `:bin` does not prove board, partition, signature, or bootloader compatibility. UF2 and Nordic package validation belongs to their respective backends. Entering DFU/UF2 bootloader mode and selecting/mounting its volume are separate preparation steps; `install` never automatically reboots the application.
+
+### MQTT scope
+
+`request_ota(transport_obj: connection, transfer: :wifi, ...)` can submit an authorized Admin preparation request through MQTT, subject to device routing/authentication support. Supply an explicit unicast `to:` and a valid `session_passkey:` obtained through an authenticated radio session; MQTT has no receive queue for automatic Admin session acquisition. That is not an MQTT firmware upload or confirmation that preparation succeeded. The image still needs a reachable, compatible loader data endpoint; `install(protocol: :mqtt, ...)` is unsupported. MQTT is also not a synchronous post-reboot verifier. Do not infer flashing support from broker publish success or an XModem protobuf field.
+
+Stock firmware rejects decoded/plaintext MQTT Admin messages. Encrypted traffic
+still requires the target's routing, downlink and Admin authorization settings;
+this client's channel-PSK MQTT publisher does not implement host-side PKI.
+The updater's complete transport selection is WiFi or BLE, not MQTT. Therefore
+an MQTT-only connection cannot deliver an image. Adding such a path would require
+device-side updater changes or an external bridge, not merely publishing image
+chunks from Ruby. A hybrid preparation-through-MQTT followed by direct TCP/BLE
+transfer is not an MQTT image uploader.
+
+Sources: [MQTT receive filtering](https://github.com/meshtastic/firmware/blob/6d41e279f1f51bd59f687b9d441c1bf47b1594fc/src/mqtt/MQTT.cpp#L129-L151)
+and [loader transport selection](https://github.com/meshtastic/esp32-unified-ota/blob/e7c0b95e14b6a1ffeca81b71c1ac477593911213/src/main.cpp#L54-L75).
 
 ## ESP32 unified WiFi example
 
@@ -28,15 +69,16 @@ image = File.binread('firmware-matching-board-update.bin')
 
 # Phase 1: use an existing authenticated Admin connection to pin this image.
 Meshtastic::Admin::Firmware.request_ota(
-  serial_obj: serial_obj,
+  transport_obj: connection,
   bytes: image,
-  mode: :OTA_WIFI
+  transfer: :wifi
 )
 
 # Phase 2: connect to the separate loader after it reboots and joins WiFi.
-# Not the Meshtastic TCP PhoneAPI port 4403, nor an existing tcp_obj.
+# Not the Meshtastic TCP PhoneAPI port 4403, nor an existing TCP PhoneAPI handle.
 result = Meshtastic::Admin::Firmware.install(
   protocol: :unified_wifi,
+  format: :bin,
   host: '192.0.2.10',
   bytes: image,
   port: 3232,
@@ -48,9 +90,9 @@ result = Meshtastic::Admin::Firmware.install(
 #   loader_version: 'hardware firmware reboot_count loader_version' }
 ```
 
-`request_ota(ota_hash: ...)` also accepts an explicitly supplied **raw** 32-byte digest (not hex). When an image is supplied alongside the digest they must match. It rejects unknown modes. The loader itself checks that the upload hash equals its provisioned NVS hash and verifies the downloaded bytes.
+`request_ota(ota_hash: ...)` also accepts an explicitly supplied **raw** 32-byte digest (not hex). When an image is supplied alongside the digest they must match. It rejects unknown transfers/modes and contradictory aliases before sending. The loader itself checks that the upload hash equals its provisioned NVS hash and verifies the downloaded bytes.
 
-`install` intentionally rejects `serial_obj`, `tcp_obj`, `bluetooth_obj`, `mqtt_obj`, `mode`, mesh destinations, and other unknown options. These are not the unified WiFi transport. `host` must address the actual prepared loader. Protocol selection is explicit: no guessing or fallback to a different flasher.
+`install` intentionally rejects `transport_obj`, `serial_obj`, `tcp_obj`, `bluetooth_obj`, `mqtt_obj`, `mode`, mesh destinations, and other unknown options. These are not the unified WiFi transport. `host` must address the actual prepared loader. Protocol selection is explicit: no guessing or fallback to a different flasher.
 
 ### Wire behavior and failure handling
 
@@ -66,7 +108,7 @@ result = Meshtastic::Admin::Firmware.install(
 
 ## ESP32 unified BLE example
 
-The compatible unified loader must already be installed and its NVS hash pinned with `request_ota(mode: :OTA_BLE, bytes: image, ...)`. Close the application transport before opening the loader; never open serial and BLE on the same radio concurrently. Identify the bootloader's **actual** address explicitly (it can differ from the application's). The backend never guesses an incremented MAC, discovers/selects another device, or pairs automatically. If BlueZ does not know the address, discover that loader explicitly before calling `install`. Application reconnection still requires normal Meshtastic BLE pairing.
+The compatible unified loader must already be installed and its NVS hash pinned with `request_ota(transfer: :ble, bytes: image, ...)`. Close the application transport before opening the loader; never open serial and BLE on the same radio concurrently. Identify the bootloader's **actual** address explicitly (it can differ from the application's). The backend never guesses an incremented MAC, discovers/selects another device, or pairs automatically. If BlueZ does not know the address, discover that loader explicitly before calling `install`. Application reconnection still requires normal Meshtastic BLE pairing.
 
 ```ruby
 result = Meshtastic::Admin::Firmware.install(
@@ -92,7 +134,7 @@ For tests or an alternative Ruby GATT implementation, unified BLE accepts `backe
 
 ## Post-reboot verification
 
-`verify:` is an **optional Hash** of `verify_reboot` options, validated before transfer. Omitting it preserves loader-only `:verified` results; it never silently claims boot health. Providing it runs verification only after the installer returns and closes its loader connection. You can also call `verify_reboot` independently.
+`verify:` is an **optional Hash** of `verify_reboot` options, validated before transfer. Omitting it preserves the backend result (`:verified` for the native loaders; a UF2 copy alone is not verified flash); it never silently claims boot health. Providing it runs verification only after the installer returns and closes its loader connection. You can also call `verify_reboot` independently.
 
 - Required: `transport: :tcp | :bluetooth | :serial`, `expected_version:` (exact nonempty String).
 - Production default: `connection:` Hash for a **new** application connection, explicitly specifying `host`, `address`, or `block_dev`, respectively. TCP uses PhoneAPI port **4403**, not updater port 3232; set `connection[:port]` only for a custom PhoneAPI port. Do not supply an existing socket/handle.
@@ -100,13 +142,13 @@ For tests or an alternative Ruby GATT implementation, unified BLE accepts `backe
 - Optional advanced `reconnect:` callable receives `{transport:, connection:, timeout:}` and must return a newly connected handle of the selected transport, with configuration requested. The verifier still waits for configuration and issues a fresh Admin metadata request; a callback cannot substitute a cached metadata Hash. The returned handle is closed afterward.
 - Pre-metadata connection/configuration I/O failures retry every 0.25 seconds within the total deadline. Metadata errors/version mismatches do not cause a reflash or get converted to success.
 - A fresh source/request-ID-matched `get_device_metadata_response` is required. Cached `handle[:metadata]`, configuration metadata, loader VERSION, a routing ACK or successful port open cannot satisfy verification.
-- Success merges `status: :boot_verified`, `loader_status: :verified`, `boot_verified: true`, `reboot_verified: true`, current firmware version, node number and metadata into the transfer result. Failure raises; firmware might already have been written, so inspect the device rather than blindly rerunning the installer.
+- Success merges `status: :boot_verified`, `loader_status:` preserving the backend status (`:verified` or UF2 `:copied`), `boot_verified: true`, `reboot_verified: true`, current firmware version, node number and metadata into the transfer result. Failure raises; firmware might already have been written, so inspect the device rather than blindly rerunning the installer.
 
 This proves that the selected application responds and reports the expected version/optional identity. It does **not** cryptographically attest the running image, establish board compatibility, or test radio/RF operation. Use the correct release artifact and retain a recovery path.
 
 ## Explicit gaps
 
-- No legacy BLE-only updater, ArduinoOTA/espota WiFi updater, Nordic Secure DFU, serial Nordic DFU, RP2040 UF2 filesystem copying, or automatic bootloader installation. Native protocol support is deliberately scoped; a board name alone does not establish its installed bootloader or transport capabilities.
+- No legacy BLE-only updater, ArduinoOTA/espota WiFi updater, Nordic Secure DFU, serial Nordic DFU, universal HEX conversion, or automatic bootloader installation. Native protocol support is deliberately scoped; a board name alone does not establish its installed bootloader or transport capabilities.
 - No automatic discovery, board/image compatibility parser, OTA partition creation, or firmware downloads. ESP32 unified source targets ESP32/ESP32-S3; this is not a claim that every ESP32 variant or every Meshtastic board has that loader.
 - MQTT can carry an authorized preparation request; it is not an image transport or synchronous post-reboot verifier.
 - Tests exercise fake GATT loaders, real Ruby D-Bus signal marshalling over UNIX sockets, loopback TCP PhoneAPI/configuration/Admin exchanges and the retained TCP uploader. No hardware was contacted or flashed; physical device compatibility and reboot behavior remain hardware-unverified.
