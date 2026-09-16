@@ -13,8 +13,10 @@ module Meshtastic
       end
 
       public_class_method def self.request_ota(opts = {})
-        mode = opts.fetch(:mode, :OTA_BLE)
-        raise ArgumentError, 'mode must be :OTA_BLE or :OTA_WIFI' unless %i[OTA_BLE OTA_WIFI].include?(mode)
+        legacy = opts.keys & %i[serial_obj bluetooth_obj tcp_obj mqtt_obj]
+        raise ArgumentError, "#{legacy.join(', ')} are unsupported; use transport_obj" unless legacy.empty?
+
+        mode = ota_mode(opts.merge({}))
 
         hash = opts[:ota_hash] || sha256(opts)
         raise ArgumentError, 'ota_hash must be a raw 32-byte String' unless hash.is_a?(String) && hash.bytesize == 32
@@ -24,7 +26,23 @@ module Meshtastic
           reboot_ota_mode: mode,
           ota_hash: hash.b
         )
-        Admin.send(opts.except(:bytes, :firmware, :ota_hash, :mode).merge(ota_request: event))
+        Admin.send(opts.except(:bytes, :firmware, :ota_hash, :mode, :transfer).merge(ota_request: event))
+      end
+
+      private_class_method def self.ota_mode(opts = {})
+        modes = { wifi: :OTA_WIFI, ble: :OTA_BLE }
+        raise ArgumentError, 'transfer must be :wifi or :ble' if opts.key?(:transfer) && !modes.key?(opts[:transfer])
+        raise ArgumentError, 'mode must be :OTA_BLE or :OTA_WIFI' if opts.key?(:mode) && !modes.value?(opts[:mode])
+        raise ArgumentError, 'transfer contradicts mode' if opts.key?(:transfer) && opts.key?(:mode) && modes[opts[:transfer]] != opts[:mode]
+
+        return modes[opts[:transfer]] if opts.key?(:transfer)
+        return opts[:mode] if opts.key?(:mode)
+
+        transport = Admin.transport_type(transport_obj: opts[:transport_obj]) if opts[:transport_obj]
+        return :OTA_BLE if transport == :bluetooth
+        return :OTA_WIFI if transport == :tcp
+
+        raise ArgumentError, 'Specify transfer: :wifi or :ble; the control transport does not select an OTA loader'
       end
 
       public_class_method def self.enter_dfu(opts = {})
@@ -48,17 +66,37 @@ module Meshtastic
 
       public_class_method def self.install(opts = {})
         validate_verification(opts[:verify]) if opts.key?(:verify)
-        options = opts.except(:verify)
+        formats = { unified_wifi: :bin, unified_ble: :bin, esp_rom: :bin, nordic_dfu: :zip, uf2: :uf2, swd: :hex }
+        expected_format = formats[opts[:protocol]]
+        raise ArgumentError, "format must be #{expected_format.inspect} for protocol #{opts[:protocol].inspect}" if opts.key?(:format) && opts[:format] != expected_format
+
+        options = opts.except(:verify, :format)
+        options = binary_options(options) if expected_format == :bin
         result = case opts[:protocol]
+                 when :swd then Hex.install(options)
+                 when :uf2 then UF2.install(options)
                  when :unified_ble then BLE.install(options)
                  when :esp_rom then SerialBootloader.install(options)
                  when :nordic_dfu then NordicDFU.install(options)
                  when :unified_wifi then install_wifi(options)
-                 else raise NotImplementedError, 'install requires explicit protocol: :unified_wifi, :unified_ble, :esp_rom or :nordic_dfu'
+                 else raise NotImplementedError, 'install requires explicit protocol: :unified_wifi, :unified_ble, :esp_rom, :nordic_dfu, :uf2 or :swd'
                  end
         return result unless opts[:verify]
 
         result.merge(verify_reboot(opts[:verify])).merge(loader_status: result[:status], reboot_verified: true, boot_verified: true)
+      end
+
+      private_class_method def self.binary_options(opts = {})
+        extension = File.extname(opts[:firmware].to_s).downcase
+        raise ArgumentError, "#{extension} format cannot be streamed as a binary image" if %w[.uf2 .zip .hex .dfu].include?(extension)
+
+        bytes = firmware_bytes(opts.merge({}))
+        uf2 = bytes.start_with?([0x0a324655, 0x9e5d5157].pack('V2'))
+        zip = bytes.start_with?("PK\x03\x04".b, "PK\x05\x06".b, "PK\x07\x08".b)
+        hex = bytes.match?(/\A\s*:[0-9a-fA-F]{10}/)
+        raise ArgumentError, 'UF2, ZIP or Intel HEX format cannot be streamed as a binary image' if uf2 || zip || hex
+
+        opts.except(:firmware).merge(bytes: bytes)
       end
 
       private_class_method def self.install_wifi(opts = {})
@@ -104,7 +142,7 @@ module Meshtastic
             sleep 0.25
             retry
           end
-          reply = Admin.request(key => handle, get_device_metadata_request: true, timeout: opts.fetch(:timeout, 60))
+          reply = Admin.request(transport_obj: handle, get_device_metadata_request: true, timeout: opts.fetch(:timeout, 60))
           metadata = reply.fetch(:value).to_h
           raise IOError, "Firmware version mismatch: #{metadata[:firmware_version].inspect}" unless metadata[:firmware_version] == opts.fetch(:expected_version)
           raise IOError, 'Post-reboot node identity mismatch' if opts[:expected_node] && handle[:my_node_num] != opts[:expected_node]
@@ -218,16 +256,17 @@ module Meshtastic
 
           # Send Admin ota_request with the image hash and OTA mode.
           #{self}.request_ota(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
-            mqtt_obj: 'optional - MQTT client from Meshtastic::MQTT.connect',
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client',
             firmware: 'optional - path to a firmware .bin on disk',
             ota_hash: 'optional - 32-byte SHA-256 digest if not hashing firmware',
-            mode: 'optional - :OTA_BLE or :OTA_WIFI (default: :OTA_BLE)'
+            transfer: 'optional - :wifi or :ble; required for serial/MQTT unless mode is explicit',
+            mode: 'optional - explicit :OTA_BLE or :OTA_WIFI alias; must agree with transfer'
+            # Bluetooth transport infers :ble; TCP transport infers :wifi.
           )
 
           # Ask the node to enter DFU / UF2 bootloader mode.
           #{self}.enter_dfu(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client'
           )
 
           # Reject the obsolete unhandled legacy OTA reboot field.
@@ -241,7 +280,8 @@ module Meshtastic
 
           # Upload using an explicitly selected native loader protocol.
           #{self}.install(
-            protocol: 'required - :unified_wifi, :unified_ble, :esp_rom or :nordic_dfu; no protocol guessing',
+            protocol: 'required - :unified_wifi, :unified_ble, :esp_rom, :nordic_dfu, :uf2 or :swd; no protocol guessing',
+            format: 'optional - :bin, :zip, :uf2 or :hex; defaults to the selected protocol format; mismatches rejected',
             verify: 'optional - verify_reboot options Hash; success becomes :boot_verified only after a fresh reply',
             host: 'required - OTA loader IP address or hostname, not a mesh node ID',
             port: 'optional - separate OTA TCP service port (default: 3232)',
@@ -251,9 +291,9 @@ module Meshtastic
             retries: 'optional - connection refusal/timeout retries, 0..20 (default: 3)',
             retry_delay: 'optional - nonnegative seconds between connection retries (default: 1)'
           )
-          # First use request_ota with the matching mode to pin the same image hash.
+          # For unified OTA first use request_ota with the matching transfer to pin the same image hash.
           # install never sends preparation commands; :verified means loader OK, not boot confirmation.
-          # BLE.help, NordicDFU.help and SerialBootloader.help document protocol-specific options.
+          # BLE.help, NordicDFU.help, SerialBootloader.help, UF2.help and Hex.help document backend options.
 
           # Reconnect and request fresh correlated application firmware metadata.
           #{self}.verify_reboot(
@@ -286,3 +326,5 @@ end
 require 'meshtastic/admin/firmware/ble'
 require 'meshtastic/admin/firmware/serial_bootloader'
 require 'meshtastic/admin/firmware/nordic_dfu'
+require 'meshtastic/admin/firmware/uf2'
+require 'meshtastic/admin/firmware/hex'

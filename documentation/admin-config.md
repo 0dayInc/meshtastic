@@ -27,23 +27,23 @@ ModuleConfig is a different protobuf: use `Admin.get_module_config` / `Admin.set
 
 ## Transport and authorization
 
-Read/write helpers pass through Admin options, including `serial_obj`, `bluetooth_obj`, `tcp_obj`, `mqtt_obj`, `to`, `from`, numeric transport `channel`, `want_ack`, `want_response`, `hop_limit`, and `session_passkey`. Use a supported connected transport. Session authentication and remote-node routing follow [Admin](admin.md).
+Read/write helpers pass through Admin options, including `transport_obj: connection`, `to`, `from`, numeric transport `channel`, `want_ack`, `want_response`, `hop_limit`, and `session_passkey`. Use a supported connected transport. Session authentication and remote-node routing follow [Admin](admin.md).
 
-A return value means transport submission, **not confirmed persistence**. These methods do not wait for a reply, automatically acquire a session key, or read settings back. Obtain the prior configuration, edit it, write, and request it again to confirm; configuration writes replace a whole section rather than patching only non-default fields. Omitting a field in a Hash can reset that setting to its protobuf default. Firmware version and hardware determine which fields are applied, and writes may reboot/disconnect the node.
+A return value means transport submission, **not confirmed persistence**. These methods inherit Admin's automatic remote session-key acquisition, but do not wait for write acknowledgments or read settings back. Obtain the prior configuration, edit it, write, and request it again to confirm; configuration writes replace a whole section rather than patching only non-default fields. Omitting a field in a Hash can reset that setting to its protobuf default. Firmware version and hardware determine which fields are applied, and writes may reboot/disconnect the node.
 
 ## Example
 
 ```ruby
-Meshtastic::Admin::Config.get_lora(serial_obj: serial_obj)
+Meshtastic::Admin::Config.get_lora(transport_obj: connection)
 
 # Supply the full desired section; prefer editing the returned protobuf.
 Meshtastic::Admin::Config.set_position(
-  serial_obj: serial_obj,
+  transport_obj: connection,
   position: Meshtastic::Config::PositionConfig.new(position_broadcast_secs: 900)
 )
 
 Meshtastic::Admin::Config.set_device_ui(
-  serial_obj: serial_obj,
+  transport_obj: connection,
   device_ui: Meshtastic::DeviceUIConfig.new
 )
 ```

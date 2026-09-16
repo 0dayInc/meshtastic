@@ -1,6 +1,12 @@
 # Meshtastic::Admin
 
-Build and send `AdminMessage` on `ADMIN_APP` through a connected `serial_obj`, `bluetooth_obj`, `tcp_obj`, or `mqtt_obj`. These operations can change configuration, reboot, erase files, or reset a device. Sending is not confirmation of successful execution.
+Build and send `AdminMessage` on `ADMIN_APP` through `transport_obj: connection`, where `connection` is the actual connected Serial, Bluetooth, TCP, or MQTT handle. These operations can change configuration, reboot, erase files, or reset a device. Sending is not confirmation of successful execution.
+
+## Connection handle
+
+All Admin send/request helpers and nested Channel, Config, and Firmware preparation APIs use `transport_obj: connection`. Pass the handle returned by `Meshtastic::Serial.connect`, `Meshtastic::Bluetooth.connect`, `Meshtastic::TCP.connect`, or `Meshtastic::MQTT.connect`, not a transport name, endpoint string, or wrapper containing `serial_obj:`. Admin detects the transport from the handle; `Admin.transport_type(transport_obj: connection)` returns its type. Missing, unsupported, or ambiguous multi-transport handles are rejected. The old Admin keywords `serial_obj:`, `bluetooth_obj:`, `tcp_obj:`, and `mqtt_obj:` are rejected rather than silently selected.
+
+The low-level transport APIs are unchanged: connect using their documented endpoint arguments and disconnect with their original transport-specific keyword (for example, `Meshtastic::Serial.disconnect(serial_obj: connection)`). Firmware `install` uses a separate loader endpoint (`host:`, `address:`, `port:`, or mounted volume/programmer options); it does not accept the application `transport_obj:`. Post-reboot verification likewise opens a new application connection using its documented endpoint options.
 
 ## Addressing and defaults
 
@@ -59,7 +65,7 @@ Unrelated ports, non-response variants, encrypted/absent data, and mismatched ID
 
 ```ruby
 reply = Meshtastic::Admin.request(
-  serial_obj: serial_obj, # alternatively bluetooth_obj: or tcp_obj:
+  transport_obj: connection, # a connected Serial, Bluetooth, or TCP handle
   to: '!aabbccdd',
   message: Meshtastic::AdminMessage.new(get_device_metadata_request: true),
   timeout: 10

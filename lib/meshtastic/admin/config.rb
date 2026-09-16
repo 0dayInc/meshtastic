@@ -108,75 +108,75 @@ module Meshtastic
         puts "USAGE:
           # Request a radio Config section by ConfigType.
           #{self}.get(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client',
             config_type: 'optional - :DEVICE_CONFIG or another ConfigType (default: :DEVICE_CONFIG)'
           )
 
           # Write a Config protobuf to the node.
           #{self}.set(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client',
             config: 'required - Meshtastic::Config protobuf to write'
           )
 
           # Request DEVICE_CONFIG from the node.
           #{self}.get_device(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client'
           )
 
           # Request POSITION_CONFIG from the node.
           #{self}.get_position(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client'
           )
 
           # Request POWER_CONFIG from the node.
           #{self}.get_power(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client'
           )
 
           # Request NETWORK_CONFIG from the node.
           #{self}.get_network(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client'
           )
 
           # Request DISPLAY_CONFIG from the node.
           #{self}.get_display(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client'
           )
 
           # Request LORA_CONFIG from the node.
           #{self}.get_lora(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client'
           )
 
           # Request BLUETOOTH_CONFIG from the node.
           #{self}.get_bluetooth(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client'
           )
 
           # Request SECURITY_CONFIG from the node.
           #{self}.get_security(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client'
           )
 
           # Request SESSIONKEY_CONFIG from the node.
           #{self}.get_sessionkey(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client'
           )
 
           # Request DeviceUIConfig using dedicated firmware operation.
           #{self}.get_device_ui(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect'
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client'
           )
 
           # Write DeviceConfig wrapped in a Config protobuf.
           #{self}.set_device(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client',
             device: 'required - DeviceConfig protobuf or complete section field Hash'
           )
 
           # Write LoRaConfig wrapped in a Config protobuf.
           #{self}.set_lora(
-            serial_obj: 'optional - serial handle from Meshtastic::Serial.connect',
+            transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client',
             lora: 'required - LoRaConfig protobuf or complete section field Hash'
           )
 
