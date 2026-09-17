@@ -24,6 +24,10 @@ Every generated payload field is available through `encode` and `send`, includin
 
 ## Operation catalog
 
+For host-side configuration files, use [Admin::Backup](admin-backup.md).
+The `backup_preferences` / `restore_preferences` operations below instead manage
+the device's own FLASH/SD preference backup; they do not export a file to the host.
+
 | Group | Methods and payload arguments |
 | --- | --- |
 | Identity | `get_owner`; `set_owner(owner:)` or `set_owner(long_name:, short_name:)`; `set_ham_mode(ham:)` or callsign/frequency/power/name fields |

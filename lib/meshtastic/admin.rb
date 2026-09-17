@@ -769,3 +769,5 @@ end
 require 'meshtastic/admin/firmware'
 require 'meshtastic/admin/channel'
 require 'meshtastic/admin/config'
+
+Meshtastic::Admin.autoload :Backup, 'meshtastic/admin/backup'
