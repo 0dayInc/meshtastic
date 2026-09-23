@@ -66,8 +66,7 @@ module PayloadFixtures
                  count: 1, final: true, complete: true, raw: raw, body: "\x00\xffRNS opaque".b }
     request = [fixtures.fetch('request_hex')].pack('H*')
     cases = [[:RETICULUM_TUNNEL_APP, raw, expected],
-             [:RETICULUM_TUNNEL_APP, request, { format: :reticulum_request, message_index: 255,
-                                              position: 2, index: 2, raw: request, complete: false }]]
+             [:RETICULUM_TUNNEL_APP, request, { format: :reticulum_request, message_index: 255, position: 2, index: 2, raw: request, complete: false }]]
     ["\x01\x00\xff".b, "REQ\xff".b, "\xff".b].each do |malformed|
       cases << [:RETICULUM_TUNNEL_APP, malformed, malformed]
     end
