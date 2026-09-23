@@ -94,6 +94,7 @@ Style/RedundantStringEscape:
   Exclude:
     - 'lib/meshtastic/admin_pb.rb'
     - 'lib/meshtastic/atak_pb.rb'
+    - 'lib/meshtastic/config_pb.rb'
     - 'lib/meshtastic/deviceonly_pb.rb'
     - 'lib/meshtastic/mesh_pb.rb'
     - 'lib/meshtastic/module_config_pb.rb'

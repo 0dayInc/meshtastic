@@ -1,8 +1,34 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative '../../support/payload_fixtures'
 
 describe Meshtastic::MQTT do # rubocop:disable Metrics/BlockLength
+  include PayloadFixtures
+
+  it 'decodes every fixture from already decoded and AES encrypted ServiceEnvelopes without losing subsequent packets' do
+    [false, true].each do |encrypted|
+      client = fake_mqtt_obj
+      payload_cases.each do |port, bytes, _expected|
+        packet = payload_radio(port, bytes).packet
+        if encrypted
+          cipher = OpenSSL::Cipher.new('AES-128-CTR')
+          cipher.encrypt
+          cipher.key = Base64.strict_decode64('1PG7OiApB1nwvP+rz05pAQ==')
+          cipher.iv = [42, 0, 123, 0].pack('V4')
+          data = packet.decoded.to_proto
+          packet.encrypted = (data.empty? ? ''.b : cipher.update(data)) + cipher.final
+        end
+        envelope = Meshtastic::ServiceEnvelope.new(packet: packet, channel_id: 'LongFast')
+        client.incoming << mqtt_packet(topic: 'msh/US/2/e/LongFast/!0000007b', payload: envelope.to_proto)
+      end
+      client.incoming << nil
+      received = []
+      described_class.subscribe(mqtt_obj: client) { |message| received << message.dig(:packet, :decoded, :payload) }
+      expect(received).to eq(payload_cases.map(&:last))
+    end
+  end
+
   def fake_mqtt_obj(client_id: '00000b0b')
     published = []
     subscribed = []
@@ -104,6 +130,36 @@ describe Meshtastic::MQTT do # rubocop:disable Metrics/BlockLength
   end
 
   describe 'mqtt reception' do
+    it 'does not apply a channel PSK to PKI ciphertext or fall back for an unknown channel' do
+      [true, false].each do |pki|
+        client = fake_mqtt_obj
+        packet = Meshtastic::MeshPacket.new(id: 42, from: 123, encrypted: 'ciphertext', pki_encrypted: pki)
+        envelope = Meshtastic::ServiceEnvelope.new(packet: packet, channel_id: 'Other')
+        client.incoming << mqtt_packet(topic: 'msh/US/2/e/Other/!0000007b', payload: envelope.to_proto)
+        client.incoming << nil
+        received = []
+        expect(OpenSSL::Cipher).not_to receive(:new)
+        described_class.subscribe(mqtt_obj: client) { |message| received << message }
+        expect(received.first.dig(:packet, :encrypted)).to eq('ciphertext')
+        expect(received.first.dig(:packet, :decoded)).to be_nil
+        expect(received.first.dig(:packet, :decryption_error)).to match(/PKI|No PSK/)
+      end
+    end
+
+    it 'does not substitute radio hash selection when MQTT channel identity is missing' do
+      client = fake_mqtt_obj
+      key = Base64.strict_decode64('1PG7OiApB1nwvP+rz05pAQ==')
+      hash = ('LongFast'.bytes + key.bytes).reduce(0, :^)
+      envelope = Meshtastic::ServiceEnvelope.new(packet: Meshtastic::MeshPacket.new(channel: hash, encrypted: 'ciphertext'))
+      client.incoming << mqtt_packet(topic: '', payload: envelope.to_proto)
+      client.incoming << nil
+      expect(OpenSSL::Cipher).not_to receive(:new)
+      described_class.subscribe(mqtt_obj: client) do |message|
+        expect(message.dig(:packet, :encrypted)).to eq('ciphertext')
+        expect(message.dig(:packet, :decryption_error)).to match(/No PSK/)
+      end
+    end
+
     it 'decrypts a published text message as UTF-8, never as a nested protobuf' do
       text = "\n\x02hi"
       _mqtt_obj, received = publish_and_subscribe(text: text, from: '!00000b0b', psks: { LongFast: 'AQ==' })

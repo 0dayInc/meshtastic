@@ -1,9 +1,24 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative '../../support/payload_fixtures'
 require 'socket'
 
 describe Meshtastic::TCP do
+  include PayloadFixtures
+
+  it 'decodes every application fixture over the TCP framed receive path' do
+    with_tcp_link do |handle, remote|
+      payload_cases.each do |port, bytes, expected|
+        remote.write(radio_frame(payload_radio(port, bytes)))
+        received = Timeout.timeout(2) do
+          described_class.subscribe(tcp_obj: handle) { |message| break message }
+        end
+        expect(received.dig(:packet, :decoded, :payload)).to eq(expected), "port #{port} bytes #{bytes.inspect}"
+      end
+    end
+  end
+
   def with_tcp_link(opts = {})
     local, remote = UNIXSocket.pair
     tcp_obj = described_class.connect({ socket: local, host: '127.0.0.1', port: 4403, want_config: false }.merge(opts))

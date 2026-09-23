@@ -459,25 +459,7 @@ module Meshtastic
 
       message[:public_key] = Base64.strict_encode64(message[:public_key]) if message[:public_key].to_s.length.positive? && !(message[:public_key].ascii_only? && message[:public_key] =~ %r{\A[A-Za-z0-9+/]+=*\z})
 
-      encrypted_message = message[:encrypted]
-      if encrypted_message.to_s.length.positive? && psks.any?
-        packet_id = message[:id]
-        packet_from = message[:from]
-        nonce_packet_id = [packet_id].pack('V').ljust(8, "\x00")
-        nonce_from_node = [packet_from].pack('V').ljust(8, "\x00")
-        nonce = "#{nonce_packet_id}#{nonce_from_node}"
-
-        psk = psks[:LongFast] || psks[psks.keys.first]
-        dec_psk = Base64.strict_decode64(psk)
-
-        cipher = OpenSSL::Cipher.new(dec_psk.length == 32 ? 'AES-256-CTR' : 'AES-128-CTR')
-        cipher.decrypt
-        cipher.key = dec_psk
-        cipher.iv = nonce
-        decrypted = cipher.update(encrypted_message) + cipher.final
-        message[:decoded] = Meshtastic::Data.decode(decrypted).to_h
-        message[:encrypted] = :decrypted
-      end
+      Meshtastic::MeshInterface.new.decrypt_packet(message: message, psks: psks)
 
       if message[:decoded]
         payload = message[:decoded][:payload]

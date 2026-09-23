@@ -23,6 +23,8 @@ Gem::Specification.new do |spec|
   # Protobuf regeneration can introduce dependencies before Git tracks them.
   # Package Ruby sources and their specs independently of staging state.
   spec.files |= Dir.glob('{lib,spec}/**/*.rb', base: __dir__)
+  # Independent encoder vectors are required by the packaged transport specs.
+  spec.files |= Dir.glob('spec/support/**/*.json', base: __dir__)
   spec.executables = spec.files.grep(%r{^bin/}) do |f|
     File.basename(f)
   end

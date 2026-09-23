@@ -1,8 +1,22 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative '../../support/payload_fixtures'
 
 describe Meshtastic::Bluetooth do
+  include PayloadFixtures
+
+  it 'decodes every application fixture received from GATT including malformed and default messages' do
+    handle = connect
+    payload_cases.each do |port, bytes, expected|
+      connection.incoming << payload_radio(port, bytes).to_proto
+      received = Timeout.timeout(2) do
+        described_class.subscribe(bluetooth_obj: handle) { |message| break message }
+      end
+      expect(received.dig(:packet, :decoded, :payload)).to eq(expected), "port #{port} bytes #{bytes.inspect}"
+    end
+  end
+
   let(:connection) do
     Class.new do
       attr_reader :writes, :incoming
