@@ -23,6 +23,8 @@ Examples use placeholder addresses only:
 
 Feature modules send protobufs over Serial, Bluetooth, or TCP via `Meshtastic.deliver_data`. Pass `serial_obj:`, `bluetooth_obj:`, or `tcp_obj:`. MQTT encrypts on the host; the radio encrypts on the other three.
 
+All four subscriptions share [payload decoding and the complete port inventory](mesh-interface.md#receive-payload-coverage), including empty proto3 messages and explicit raw/unsupported codec boundaries.
+
 Do not open Serial and Bluetooth to the same radio at once. Always `disconnect` in `ensure`.
 
 ## Feature modules
@@ -43,6 +45,9 @@ Do not open Serial and Bluetooth to the same radio at once. Always `disconnect` 
 - [Meshtastic::RemoteHardware](remote-hardware.md)
 - [Meshtastic::Storeforward](storeforward.md)
 - [Meshtastic::ATAK](atak.md)
+- [Meshtastic::Forwarder](forwarder.md)
+- [Meshtastic::Reticulum](reticulum.md)
+- [Meshtastic::PayloadFormats](payload-formats.md)
 - [Meshtastic::Paxcount](paxcount.md)
 - [Meshtastic::Cannedmessages](cannedmessages.md)
 - [Meshtastic::RTTTL](rtttl.md)

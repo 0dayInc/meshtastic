@@ -2,6 +2,8 @@
 
 require 'meshtastic/atak_pb'
 require 'meshtastic/portnums_pb'
+require 'meshtastic/payload_compression'
+require 'meshtastic/unishox2'
 require 'zlib'
 
 module Meshtastic
@@ -52,17 +54,8 @@ module Meshtastic
     end
 
     public_class_method def self.decode_v2(opts = {})
-      bytes = (opts[:wire] || opts[:payload]).to_s.b
-      raise ArgumentError, 'empty ATAK V2 payload' if bytes.empty?
-
-      flags = bytes.getbyte(0)
-      body = bytes.byteslice(1..)
-      if flags == V2_UNCOMPRESSED
-        Meshtastic::TAKPacketV2.decode(body)
-      else
-        raise ArgumentError,
-              "compressed ATAK V2 dictionary id #{flags & 0x3F} is not unpacked (flags=0x#{flags.to_s(16)})"
-      end
+      body = Meshtastic::PayloadCompression.decode_v2(payload: opts[:wire] || opts[:payload])
+      Meshtastic::TAKPacketV2.decode(body)
     end
 
     public_class_method def self.compress_cot(opts = {})
@@ -80,7 +73,7 @@ module Meshtastic
       portnum = normalize_port(portnum: opts[:portnum])
       case portnum
       when V1_PORT, :ATAK_PLUGIN
-        Meshtastic::TAKPacket.decode(payload.to_s.b)
+        Meshtastic::TAKPacket.decode(V1Strings.new(payload.to_s.b).decode)
       when V2_PORT, :ATAK_PLUGIN_V2
         decode_v2(payload: payload)
       when FORWARDER_PORT, :ATAK_FORWARDER
@@ -155,7 +148,7 @@ module Meshtastic
           message: 'optional - GeoChat text for the V2 chat variant'
         )
 
-        # Decode an uncompressed V2 wire frame (flags 0xFF plus protobuf).
+        # Decode a bounded V2 frame using official dictionaries or raw flags 0xFF.
         #{self}.decode_v2(
           wire: 'optional - full V2 wire bytes including the flags byte',
           payload: 'optional - same as wire when wire is omitted'
@@ -219,6 +212,98 @@ module Meshtastic
         #{self}.authors
       "
     end
+
+    # Compressed V1 fields contain arbitrary bytes despite being proto strings.
+    # Rewrite only firmware-compressed fields BEFORE the strict UTF-8 parser.
+    class V1Strings
+      def initialize(bytes)
+        raise ArgumentError, 'ATAK V1 input exceeds 4096 bytes' if bytes.bytesize > 4096
+
+        @bytes = bytes
+      end
+
+      def decode
+        fields = parse(@bytes)
+        compressed = fields.select { |number, kind, _| number == 1 && kind.zero? }.last
+        return @bytes unless compressed && compressed[2] != 0
+
+        output = fields.map do |number, kind, data|
+          data = 0 if number == 1 && kind.zero?
+          if kind == 2 && [2, 6].include?(number)
+            limit = number == 2 ? 2 : 3
+            data = parse(data).map do |inner, type, value|
+              value = Meshtastic::Unishox2.decode(payload: value).b if type == 2 && inner.between?(1, limit)
+              field(inner, type, value)
+            end.join.b
+          end
+          field(number, kind, data)
+        end.join.b
+        raise ArgumentError, 'ATAK V1 decoded output exceeds 4096 bytes' if output.bytesize > 4096
+
+        output
+      end
+
+      private
+
+      def varint(bytes, offset)
+        value = 0
+        10.times do |index|
+          byte = bytes.getbyte(offset + index)
+          raise ArgumentError, 'truncated ATAK V1 varint' unless byte
+          raise ArgumentError, 'overflow ATAK V1 varint' if index == 9 && byte > 1
+
+          value |= (byte & 127) << (index * 7)
+          return [value, offset + index + 1] if byte < 128
+        end
+        raise ArgumentError, 'invalid ATAK V1 varint'
+      end
+
+      def parse(bytes)
+        offset = 0
+        fields = []
+        while offset < bytes.bytesize
+          tag, offset = varint(bytes, offset)
+          number = tag >> 3
+          kind = tag & 7
+          raise ArgumentError, 'invalid ATAK V1 field number' unless number.between?(1, 0x1fffffff)
+
+          if kind.zero?
+            data, offset = varint(bytes, offset)
+          else
+            if kind == 2
+              length, offset = varint(bytes, offset)
+            else
+              length = { 1 => 8, 5 => 4 }[kind]
+              raise ArgumentError, 'unsupported ATAK V1 protobuf wire type' unless length
+            end
+            raise ArgumentError, 'truncated ATAK V1 field' if offset + length > bytes.bytesize
+
+            data = bytes.byteslice(offset, length)
+            offset += length
+          end
+          fields << [number, kind, data]
+        end
+        fields
+      end
+
+      def encode_varint(value)
+        bytes = +''.b
+        while value > 127
+          bytes << ((value & 127) | 128)
+          value >>= 7
+        end
+        bytes << value
+      end
+
+      def field(number, kind, value)
+        prefix = encode_varint((number << 3) | kind)
+        return prefix + encode_varint(value) if kind.zero?
+
+        prefix << encode_varint(value.bytesize) if kind == 2
+        prefix + value
+      end
+    end
+    private_constant :V1Strings
 
     private_class_method def self.deliver(opts = {})
       data = Meshtastic::Data.new(portnum: opts[:port_num], payload: opts[:payload])

@@ -137,40 +137,10 @@ module Meshtastic
             message[:public_key] = Base64.strict_encode64(raw_public_key)
           end
 
-          # If encrypted_message is not nil, then decrypt
-          # the message prior to decoding.
-          encrypted_message = message[:encrypted]
-          if encrypted_message.to_s.length.positive? &&
-             message[:topic]
-
-            # if message[:pki_encrypted]
-            #   # TODO: Display Decrypted PKI Message
-            #   public_key = message[:public_key]
-            #   dec_public_key = Base64.strict_decode64(public_key)
-            # else
-            packet_id = message[:id]
-            packet_from = message[:from]
-
-            nonce_packet_id = [packet_id].pack('V').ljust(8, "\x00")
-            nonce_from_node = [packet_from].pack('V').ljust(8, "\x00")
-            nonce = "#{nonce_packet_id}#{nonce_from_node}"
-
-            psk = psks[:LongFast]
-            target_channel = message[:topic].split('/')[-2].to_sym
-            psk = psks[target_channel] if psks.keys.include?(target_channel)
-            dec_psk = Base64.strict_decode64(psk)
-
-            cipher = OpenSSL::Cipher.new('AES-128-CTR')
-            cipher = OpenSSL::Cipher.new('AES-256-CTR') if dec_psk.length == 32
-            cipher.decrypt
-            cipher.key = dec_psk
-            cipher.iv = nonce
-
-            decrypted = cipher.update(encrypted_message) + cipher.final
-            # end
-            message[:decoded] = Meshtastic::Data.decode(decrypted).to_h
-            message[:encrypted] = :decrypted
-          end
+          mui.decrypt_packet(
+            message: message, psks: psks,
+            channel: decoded_payload_hash[:channel_id].to_s.empty? ? raw_topic.split('/')[-2].to_s : decoded_payload_hash[:channel_id]
+          )
 
           if message[:decoded]
             # payload = Meshtastic::Data.decode(message[:decoded][:payload]).to_h

@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative '../../support/tak_codec_fixtures'
+require_relative '../../support/unishox_fixtures'
 
 describe Meshtastic::ATAK do
   def fake_serial_obj
@@ -145,6 +147,54 @@ describe Meshtastic::ATAK do
     described_class.send(serial_obj: serial_obj, message: 'ATAK chat')
     packet = decode_to_radio(serial_obj)
     expect(packet.decoded.portnum).to eq(:ATAK_PLUGIN)
+  end
+end
+
+describe Meshtastic::ATAK do
+  it 'handles official SDK malformed cases and reserved flag bits' do
+    TAK_MALFORMED_FIXTURES.each do |name, hex|
+      if name == 'reserved_bits_set'
+        expect(described_class.decode_v2(payload: [hex].pack('H*'))).to be_a(Meshtastic::TAKPacketV2)
+      else
+        expect { described_class.decode_v2(payload: [hex].pack('H*')) }.to raise_error(StandardError), name
+      end
+    end
+  end
+
+  it 'rejects malformed V1 framing and excessive input before protobuf parsing' do
+    ["\x08\x01\x12\x80", "\x08\x01\x00", "\x08\x01\x12\x20", 'a' * 4097].each do |wire|
+      expect { described_class.decode(portnum: :ATAK_PLUGIN, payload: wire.b) }.to raise_error(ArgumentError)
+    end
+  end
+
+  it 'preserves V1 raw detail and accepts empty proto3 packets' do
+    wire = Meshtastic::TAKPacket.new(is_compressed: true, detail: "\xff\x00".b).to_proto
+    decoded = described_class.decode(portnum: :ATAK_PLUGIN, payload: wire)
+    expect(decoded.detail).to eq("\xff\x00".b)
+    expect(decoded.is_compressed).to be(false)
+    expect(described_class.decode(portnum: :ATAK_PLUGIN, payload: '').to_h).to eq({})
+  end
+
+  it 'decodes SDK compressed V2 golden protobufs' do
+    TAK_CODEC_FIXTURES.each do |name, wire, proto|
+      expect(described_class.decode_v2(payload: [wire].pack('H*')).to_h)
+        .to eq(Meshtastic::TAKPacketV2.decode([proto].pack('H*')).to_h), name
+    end
+  end
+
+  it 'decompresses V1 binary string fields before UTF-8 protobuf parsing' do
+    field = ->(tag, data) { [(tag * 8) + 2, data.bytesize].pack('C*') + data }
+    compressed = ->(text) { [UNISHOX_FIXTURES.assoc(text).last].pack('H*') }
+    contact = field.call(1, compressed.call('ALPHA')) + field.call(2, compressed.call('RADIO-1'))
+    chat = field.call(1, compressed.call('ATAK chat')) + field.call(2, compressed.call('ANDROID-aabbccdd')) + field.call(3, compressed.call('ALPHA'))
+    wire = "\x08\x01".b + field.call(2, contact) + field.call(6, chat)
+    packet = described_class.decode(portnum: :ATAK_PLUGIN, payload: wire)
+    expect(packet.is_compressed).to be(false)
+    expect(packet.contact.callsign).to eq('ALPHA')
+    expect(packet.contact.device_callsign).to eq('RADIO-1')
+    expect(packet.chat.message).to eq('ATAK chat')
+    expect(packet.chat.to).to eq('ANDROID-aabbccdd')
+    expect(packet.chat.to_callsign).to eq('ALPHA')
   end
 
   it 'prints usage without raising' do

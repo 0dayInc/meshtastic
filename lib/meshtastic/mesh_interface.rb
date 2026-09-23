@@ -5,6 +5,24 @@ require 'meshtastic/mesh_pb'
 # Plugin used to interact with Meshtastic nodes
 module Meshtastic
   class MeshInterface
+    # Wire schemas, not similarly named transport/status messages.
+    PROTOBUF_PAYLOADS = {
+      REMOTE_HARDWARE_APP: HardwareMessage, POSITION_APP: Position, NODEINFO_APP: User,
+      ROUTING_APP: Routing, ADMIN_APP: AdminMessage, WAYPOINT_APP: Waypoint,
+      KEY_VERIFICATION_APP: KeyVerification, REMOTE_SHELL_APP: RemoteShell,
+      PAXCOUNTER_APP: Paxcount, STORE_FORWARD_PLUSPLUS_APP: StoreForwardPlusPlus,
+      NODE_STATUS_APP: StatusMessage, MESH_BEACON_APP: MeshBeacon,
+      STORE_FORWARD_APP: StoreAndForward, TELEMETRY_APP: Telemetry,
+      SIMULATOR_APP: Compressed, TRACEROUTE_APP: RouteDiscovery,
+      NEIGHBORINFO_APP: NeighborInfo, ATAK_PLUGIN: TAKPacket, MAP_REPORT_APP: MapReport,
+      POWERSTRESS_APP: PowerStressMessage, LORAWAN_BRIDGE: LoRaWANBridge, ATAK_PLUGIN_V2: TAKPacketV2
+    }.freeze
+    TEXT_PAYLOADS = %i[TEXT_MESSAGE_APP DETECTION_SENSOR_APP ALERT_APP REPLY_APP RANGE_TEST_APP].freeze
+    BINARY_PAYLOADS = %i[TEXT_MESSAGE_COMPRESSED_APP AUDIO_APP IP_TUNNEL_APP ZPS_APP
+                         CAYENNE_APP LORA_OTA_APP ATAK_FORWARDER RETICULUM_TUNNEL_APP].freeze
+    # No guessed protobuf decoding for application-owned or undefined bytes.
+    RAW_PAYLOADS = %i[UNKNOWN_APP PAGING_APP SERIAL_APP GROUPALARM_APP MAX].freeze
+
     attr_accessor :acknowledgment,
                   :config_id,
                   :current_packet_id,
@@ -432,75 +450,52 @@ module Meshtastic
     end
 
     # Supported Method Parameters::
-    # Meshtastic::MQQT.decode_payload(
-    #   payload: 'required - payload to recursively decode',
+    # Meshtastic::MeshInterface.decode_payload(
+    #   payload: 'required - bytes to decode; nil decodes known proto3 defaults; unknown absent payload remains nil',
     #   msg_type: 'required - message type (e.g. :TEXT_MESSAGE_APP)',
     #   gps_metadata: 'optional - include GPS metadata in output (default: false)',
     # )
 
     def decode_payload(opts = {})
+      decode_application_payload(opts.merge(simulator_depth: 0))
+    end
+
+    def decode_application_payload(opts = {})
       payload = opts[:payload]
       msg_type = opts[:msg_type]
       gps_metadata = opts[:gps_metadata]
 
-      case msg_type
-      when :ADMIN_APP
-        decoder = Meshtastic::AdminMessage
-      when :ATAK_FORWARDER, :ATAK_PLUGIN
-        decoder = Meshtastic::TAKPacket
-        # when :AUDIO_APP
-        # decoder = Meshtastic::Audio
-      when :DETECTION_SENSOR_APP
-        decoder = Meshtastic::DeviceState
-        # when :IP_TUNNEL_APP
-        # decoder = Meshtastic::IpTunnel
-      when :MAP_REPORT_APP
-        decoder = Meshtastic::MapReport
-        # when :MAX
-        # decoder = Meshtastic::Max
-      when :NEIGHBORINFO_APP
-        decoder = Meshtastic::NeighborInfo
-      when :NODEINFO_APP
-        decoder = Meshtastic::User
-      when :PAXCOUNTER_APP
-        decoder = Meshtastic::Paxcount
-      when :POSITION_APP
-        decoder = Meshtastic::Position
-        # when :PRIVATE_APP
-        # decoder = Meshtastic::Private
-      when :RANGE_TEST_APP
-        # Unsure if this is the correct protobuf object
-        decoder = Meshtastic::FromRadio
-      when :REMOTE_HARDWARE_APP
-        decoder = Meshtastic::HardwareMessage
-        # when :REPLY_APP
-        # decoder = Meshtastic::Reply
-      when :ROUTING_APP
-        decoder = Meshtastic::Routing
-      when :SERIAL_APP
-        decoder = Meshtastic::SerialConnectionStatus
-      when :SIMULATOR_APP
-        decoder = Meshtastic::Compressed
-      when :STORE_FORWARD_APP
-        decoder = Meshtastic::StoreAndForward
-      when :TELEMETRY_APP
-        decoder = Meshtastic::Telemetry
-      when :TEXT_MESSAGE_APP
-        return payload.dup.force_encoding(Encoding::UTF_8).scrub
-      when :UNKNOWN_APP
-        decoder = Meshtastic::Data
-      when :TRACEROUTE_APP
-        decoder = Meshtastic::RouteDiscovery
-      when :WAYPOINT_APP
-        decoder = Meshtastic::Waypoint
-        # when :ZPS_APP
-        # decoder = Meshtastic::Zps
-      else
-        puts "WARNING: Can't decode\n#{payload.inspect}\nw/ portnum: #{msg_type}"
-        return payload
-      end
+      msg_type = Meshtastic::PortNum.lookup(msg_type) || msg_type if msg_type.is_a?(Integer)
+      decoder = PROTOBUF_PAYLOADS[msg_type]
+      return (payload || '').dup.force_encoding(Encoding::UTF_8).scrub if TEXT_PAYLOADS.include?(msg_type)
+      return nil if payload.nil? && !decoder
 
-      payload = decoder.decode(payload).to_h
+      return Meshtastic::Unishox2.decode(payload: payload) if msg_type == :TEXT_MESSAGE_COMPRESSED_APP
+      return Meshtastic::Forwarder.decode_packet(payload: payload) if msg_type == :ATAK_FORWARDER
+      return Meshtastic::Reticulum.decode_packet(payload: payload) if msg_type == :RETICULUM_TUNNEL_APP
+      return Meshtastic::PayloadFormats.decode(portnum: msg_type, payload: payload) if Meshtastic::PayloadFormats::PORTS.key?(msg_type)
+
+      return payload unless decoder
+
+      # Retain the next wrapper unchanged once eight simulator layers are decoded.
+      return payload if msg_type == :SIMULATOR_APP && opts[:simulator_depth] >= 8
+
+      payload ||= ''.b
+      payload = case msg_type
+                when :ATAK_PLUGIN
+                  Meshtastic::ATAK.decode(portnum: msg_type, payload: payload).to_h
+                when :ATAK_PLUGIN_V2
+                  payload.empty? ? {} : Meshtastic::ATAK.decode_v2(payload: payload).to_h
+                else
+                  decoder.decode(payload).to_h
+                end
+      if msg_type == :SIMULATOR_APP
+        data = decode_application_payload(
+          payload: payload[:data], msg_type: payload.fetch(:portnum, 0),
+          gps_metadata: gps_metadata, simulator_depth: opts[:simulator_depth] + 1
+        )
+        payload[:data] = data unless data.nil?
+      end
 
       if payload.keys.include?(:latitude_i)
         lat = payload[:latitude_i] * 0.0000001
@@ -542,11 +537,57 @@ module Meshtastic
       end
 
       payload
-    rescue Encoding::CompatibilityError,
-           Google::Protobuf::ParseError
-      payload
-    rescue StandardError => e
-      raise e
+    rescue StandardError
+      # A malformed or unavailable application codec must not stop reception.
+      opts[:payload]
+    end
+
+    private :decode_application_payload
+
+    # Decode only the selected channel key; never reinterpret PKI as PSK crypto.
+    # AES-CTR parsing is not authentication or proof of origin.
+    def decrypt_packet(opts = {})
+      message = opts[:message]
+      return message if message[:decoded] || !message.key?(:encrypted)
+
+      if message[:pki_encrypted]
+        message[:decryption_error] = 'PKI ciphertext requires device-owned private keys'
+        return message
+      end
+
+      channel = opts[:channel]
+      psks = opts[:psks] || {}
+      psk = psks[channel] || psks[channel.to_s] || psks[channel.to_s.to_sym] unless channel.nil?
+      if channel.nil?
+        # Encrypted radio packets carry an eight-bit name/key XOR hash, not a slot.
+        candidates = psks.select do |name, value|
+          bytes = Base64.strict_decode64(value)
+          [16, 32].include?(bytes.bytesize) && (name.to_s.bytes + bytes.bytes).reduce(0, :^) == message.fetch(:channel, 0)
+        rescue ArgumentError
+          false
+        end
+        psk = candidates.values.first if candidates.size == 1
+      end
+      unless psk
+        message[:decryption_error] = 'No PSK for the selected channel'
+        return message
+      end
+
+      key = Base64.strict_decode64(psk)
+      raise ArgumentError, 'PSK must contain 16 or 32 bytes' unless [16, 32].include?(key.bytesize)
+
+      cipher = OpenSSL::Cipher.new(key.bytesize == 32 ? 'AES-256-CTR' : 'AES-128-CTR')
+      cipher.decrypt
+      cipher.key = key
+      cipher.iv = [message.fetch(:id, 0), 0, message.fetch(:from, 0), 0].pack('V4')
+      ciphertext = message[:encrypted]
+      plaintext = (ciphertext.empty? ? ''.b : cipher.update(ciphertext)) + cipher.final
+      message[:decoded] = Meshtastic::Data.decode(plaintext).to_h
+      message[:encrypted] = :decrypted
+      message
+    rescue ArgumentError, OpenSSL::Cipher::CipherError, Google::Protobuf::ParseError
+      message[:decryption_error] = 'Unable to decode with the selected channel PSK'
+      message
     end
 
     # Author(s):: 0day Inc. <support@0dayinc.com>
@@ -612,10 +653,19 @@ module Meshtastic
           psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: \"AQ==\" })'
         )
 
+        # Binary codecs: Unishox2, ATAK V1/V2, Forwarder, Reticulum and PayloadFormats.
+        # EXI unsupported; fragments are not automatically grouped.
+        # PCM and experimental ZPS profiles require the direct PayloadFormats API.
         #{self}.decode_payload(
-          payload: 'required - payload to recursively decode',
+          payload: 'required - bytes to decode; nil decodes known proto3 defaults; unknown absent payload remains nil',
           msg_type: 'required - message type (e.g. :TEXT_MESSAGE_APP)',
           gps_metadata: 'optional - include GPS metadata in output (default: false)',
+        )
+
+        #{self}.decrypt_packet(
+          message: 'required - decoded MeshPacket hash, updated in place',
+          psks: 'required - channel names mapped to full Base64 AES keys',
+          channel: 'optional - exact MQTT channel name; omitted selects unique radio channel hash'
         )
 
         #{self}.authors

@@ -1,9 +1,30 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative '../../support/payload_fixtures'
 require 'pty'
 
 describe Meshtastic::Serial do # rubocop:disable Metrics/BlockLength
+  include PayloadFixtures
+
+  it 'decodes every application fixture over actual UART framing and continues after malformed payloads' do
+    with_serial_link do |handle, device|
+      payload_cases.each do |port, bytes, expected|
+        device.write(radio_frame(payload_radio(port, bytes)))
+        received = Timeout.timeout(2) do
+          described_class.subscribe(serial_obj: handle) { |message| break message }
+        end
+        expect(received.dig(:packet, :decoded, :payload)).to eq(expected), "port #{port} bytes #{bytes.inspect}"
+      end
+      device.write(radio_frame(Meshtastic::FromRadio.new(packet: Meshtastic::MeshPacket.new(
+        id: 42, from: 123, encrypted: 'ciphertext', pki_encrypted: true
+      ))))
+      expect(OpenSSL::Cipher).not_to receive(:new)
+      received = Timeout.timeout(2) { described_class.subscribe(serial_obj: handle) { |message| break message } }
+      expect(received.dig(:packet, :encrypted)).to eq('ciphertext')
+    end
+  end
+
   def with_serial_link(opts = {})
     PTY.open do |device, host|
       serial_obj = described_class.connect({ block_dev: host.path, want_config: false }.merge(opts))
@@ -80,6 +101,31 @@ describe Meshtastic::Serial do # rubocop:disable Metrics/BlockLength
         ensure
           receiver.kill.join
         end
+      end
+    end
+
+    it 'does not warn when a framed packet has an unknown portnum and no payload' do
+      with_serial_link do |serial_obj, device|
+        device.write(radio_frame(Meshtastic::FromRadio.new(packet: Meshtastic::MeshPacket.new(
+          decoded: Meshtastic::Data.new(portnum: 51)
+        ))))
+        output = StringIO.new
+        received = nil
+        old = $stdout
+        $stdout = output
+        begin
+          Timeout.timeout(1) do
+            described_class.subscribe(serial_obj: serial_obj) do |message|
+              received = message
+              break
+            end
+          end
+        ensure
+          $stdout = old
+        end
+        expect(received.dig(:packet, :decoded, :portnum)).to eq(51)
+        expect(received.dig(:packet, :decoded, :payload)).to be_nil
+        expect(output.string).not_to include("Can't decode")
       end
     end
 
