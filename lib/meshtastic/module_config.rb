@@ -41,6 +41,8 @@ module Meshtastic
         # Legacy serial_obj:, bluetooth_obj:, tcp_obj:, mqtt_obj: remain accepted.
         # Supply one non-nil connection only; mixed connection options are rejected.
         # Remote setters inherit Admin automatic sessions, not persistence readback.
+        # Firmware v2.8.1.8e6a88d: exactly one selected module section is required.
+        # Empty outer messages and unknown enum values fail before any radio I/O.
 
         # Run the authors class method for this module.
         #{self}.authors

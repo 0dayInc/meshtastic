@@ -13,7 +13,7 @@ module Meshtastic
     # Host-side snapshots, not firmware filesystem backup commands.
     module Backup
       FORMAT = 'meshtastic-admin-backup'
-      WARNING = 'Contains secrets returned by firmware. Firmware may redact secrets; absent/default values are not proof of completeness. Owner identity and hardware metadata are excluded. ACKs do not prove persistence.'
+      WARNING = 'Contains secrets returned by firmware. Firmware may redact secrets; absent/default values are not proof of completeness. Owner id, MAC and hardware metadata are excluded, NOT security private/public identity keys. ACKs do not prove persistence.'
       CONFIG_TYPES = %i[DEVICE_CONFIG POSITION_CONFIG POWER_CONFIG NETWORK_CONFIG DISPLAY_CONFIG LORA_CONFIG BLUETOOTH_CONFIG SECURITY_CONFIG].freeze
       MODULE_TYPES = %i[MQTT_CONFIG SERIAL_CONFIG EXTNOTIF_CONFIG STOREFORWARD_CONFIG RANGETEST_CONFIG TELEMETRY_CONFIG CANNEDMSG_CONFIG AUDIO_CONFIG REMOTEHARDWARE_CONFIG NEIGHBORINFO_CONFIG AMBIENTLIGHTING_CONFIG DETECTIONSENSOR_CONFIG PAXCOUNTER_CONFIG STATUSMESSAGE_CONFIG TRAFFICMANAGEMENT_CONFIG TAK_CONFIG MESHBEACON_CONFIG].freeze
       OWNER_FIELDS = %w[long_name short_name is_licensed].freeze
@@ -127,6 +127,20 @@ module Meshtastic
           end
         end
         entries = import_plan(document: document, format: opts.fetch(:format, :auto), path: opts[:path])
+        identity = entries.any? do |entry|
+          security = entry[:message].security if entry[:section] == 'config'
+          security && (!security.private_key.empty? || !security.public_key.empty?)
+        end
+        raise ArgumentError, 'backup contains security identity keys; explicitly select identity_keys: :restore or remove the entire security record offline' if identity && opts.fetch(:identity_keys, :reject) != :restore
+
+        reconnect = identity || entries.any? { |entry| entry[:section] == 'owner' || (entry[:section] == 'config' && %w[LORA_CONFIG SECURITY_CONFIG NETWORK_CONFIG BLUETOOTH_CONFIG].include?(entry[:slot])) }
+        privacy = entries.any? { |entry| privacy_sensitive?(entry) }
+        raise ArgumentError, 'backup changes location, sharing or telemetry settings; explicitly select allow_privacy_changes: true' if privacy && !opts.fetch(:allow_privacy_changes, false)
+
+        warnings = [WARNING]
+        warnings << 'Privacy: restored location, channel precision, MQTT sharing or enabled telemetry may disclose location, traffic or device, environment, air quality, power and health metrics. Firmware may clamp public-channel precision; values are never silently stripped by this client.' if privacy
+        warnings << 'Identity or connection settings may change the node number or connection. Reconnect, rediscover the target, and compare fresh configuration before claiming persistence; this API does not reconnect or retarget automatically.' if reconnect
+        warnings << 'Security public keys may be derived from private keys by firmware; absent private keys preserve an existing identity, not a request to reset it.' if entries.any? { |entry| entry[:section] == 'config' && entry[:slot] == 'SECURITY_CONFIG' }
         plan = entries.each_with_index.sort_by do |entry, index|
           priority = if entry[:section] == 'config'
                        { 'LORA_CONFIG' => 20, 'BLUETOOTH_CONFIG' => 21, 'NETWORK_CONFIG' => 22, 'SECURITY_CONFIG' => 23 }.fetch(entry[:slot], 0)
@@ -136,7 +150,7 @@ module Meshtastic
           [priority, index]
         end.map(&:first)
         report = { status: :dry_run, planned: plan.length, attempted: 0, acknowledged: 0, readback_confirmed: 0, persistence_verified: false,
-                   transaction: :not_requested, records: [], plan: plan.map { |entry| entry.slice(:section, :slot) }, warnings: [WARNING] }
+                   transaction: :not_requested, records: [], plan: plan.map { |entry| entry.slice(:section, :slot) }, warnings: warnings, reconnect_required: reconnect }
         return report if opts.fetch(:dry_run, false)
 
         failure = nil
@@ -172,6 +186,23 @@ module Meshtastic
         report[:failure] = failure.merge(error: e.class.name)
         report[:failure][:reason] = e.reason if e.is_a?(Admin::RoutingError)
         report
+      end
+
+      private_class_method def self.privacy_sensitive?(opts = {})
+        message = opts[:message]
+        case opts[:section]
+        when 'fixed_position' then true
+        when 'config' then opts[:slot] == 'POSITION_CONFIG'
+        when 'channel'
+          settings = message.settings
+          settings && (settings.uplink_enabled || settings.module_settings&.position_precision.to_i.positive?)
+        when 'module_config'
+          return message.mqtt.enabled || message.mqtt.map_reporting_enabled if message.mqtt
+
+          telemetry = message.telemetry
+          telemetry && %w[device_telemetry_enabled environment_measurement_enabled air_quality_enabled power_measurement_enabled health_measurement_enabled].any? { |field| telemetry[field] }
+        else false
+        end
       end
 
       # A timed-out mutation is never resent; only a fresh getter can resolve it.
@@ -345,6 +376,7 @@ module Meshtastic
         end
         raise ArgumentError, 'DeviceProfile contains no restorable fields' if entries.empty?
 
+        entries.each { |entry| Validation.validate(message: entry[:message]) if entry[:message].respond_to?(:to_proto) }
         entries
       rescue Google::Protobuf::ParseError, TypeError, RangeError, URI::InvalidURIError
         raise ArgumentError, 'invalid DeviceProfile protobuf or channel URL', cause: nil
@@ -422,6 +454,7 @@ module Meshtastic
                   end
           validate_proto_json(value: record['value'], descriptor: klass.descriptor)
           message = klass.decode_json(JSON.generate(record['value']), ignore_unknown_fields: false)
+          Validation.validate(message: message)
           if %w[config module_config].include?(section)
             types = section == 'config' ? CONFIG_TYPES : MODULE_TYPES
             fields = klass.descriptor.map(&:name)
@@ -461,14 +494,16 @@ module Meshtastic
       private_class_method def self.validate_options(opts = {})
         options = opts[:options]
         allowed = %i[transport_obj to timeout channel hop_limit path]
-        allowed += opts[:operation] == :export ? %i[format config_types module_config_types channel_indexes include_owner include_ui] : %i[backup format dry_run edit_transaction verify]
+        allowed += opts[:operation] == :export ? %i[format config_types module_config_types channel_indexes include_owner include_ui] : %i[backup format dry_run edit_transaction verify identity_keys allow_privacy_changes]
+        raise ArgumentError, 'identity_keys must be :reject (default) or :restore' if options.key?(:identity_keys) && !%i[reject restore].include?(options[:identity_keys])
+
         allowed += %i[fixed_position include_ringtone include_canned_messages] if opts[:operation] == :export && options[:format] == :device_profile
         raise ArgumentError, 'unknown backup options' unless (options.keys - allowed).empty?
 
         formats = opts[:operation] == :export ? %i[json device_profile] : %i[auto json device_profile]
         raise ArgumentError, "format must be one of #{formats.join(', ')}" if options.key?(:format) && !formats.include?(options[:format])
 
-        %i[include_owner include_ui include_ringtone include_canned_messages dry_run edit_transaction verify].each do |key|
+        %i[include_owner include_ui include_ringtone include_canned_messages dry_run edit_transaction verify allow_privacy_changes].each do |key|
           raise ArgumentError, 'backup flags must be boolean' if options.key?(key) && ![true, false].include?(options[key])
         end
         timeout = options.fetch(:timeout, 10)
@@ -542,7 +577,9 @@ module Meshtastic
             path: 'optional - existing JSON or binary DeviceProfile .cfg file; mutually exclusive with backup',
             backup: 'optional - versioned JSON Hash, JSON String or binary DeviceProfile String; mutually exclusive with path',
             format: 'optional - :auto (default), :json or :device_profile; cfg paths select binary, other content is validated',
-            dry_run: 'optional - validate and plan without any radio requests; default false',
+            identity_keys: 'optional - :reject (default) rejects any nonempty security private/public identity key; :restore sends unchanged; never strips keys, including in dry runs',
+            allow_privacy_changes: 'optional - boolean default false; explicitly consent to position/fixed-position, positive channel precision/uplink, enabled MQTT/map reporting or telemetry (device, environment, air quality, power, health) restoration',
+            dry_run: 'optional - validate and plan without any radio requests; default false; consent flags still required',
             edit_transaction: 'optional - begin/commit on firmware known to support edits; default false',
             verify: 'optional - additional fresh comparison after completed writes/commit; timeout recovery reads occur regardless; not durability proof; default false',
             timeout: 'optional - positive finite seconds per request; default 10',
@@ -551,6 +588,8 @@ module Meshtastic
             hop_limit: 'optional - mesh transport hop limit; default Admin behavior'
           )
           # Contains secrets; firmware may redact values. Never logs document contents.
+          # Firmware v2.8.1.8e6a88d semantics; owner metadata exclusion does not exclude security identity keys.
+          # Reports reconnect_required when identity/connection settings may change. No automatic reconnect or target discovery; persistence_verified remains false.
           # Display the module authors.
           #{self}.authors
         "

@@ -12,6 +12,7 @@ describe Meshtastic::MQTT do # rubocop:disable Metrics/BlockLength
       payload_cases.each do |port, bytes, _expected|
         packet = payload_radio(port, bytes).packet
         if encrypted
+          packet.channel = ('LongFast'.bytes + Base64.strict_decode64('1PG7OiApB1nwvP+rz05pAQ==').bytes).reduce(0, :^)
           cipher = OpenSSL::Cipher.new('AES-128-CTR')
           cipher.encrypt
           cipher.key = Base64.strict_decode64('1PG7OiApB1nwvP+rz05pAQ==')
@@ -96,6 +97,103 @@ describe Meshtastic::MQTT do # rubocop:disable Metrics/BlockLength
   end
 
   describe '.send_text' do
+    it 'fails closed on direct text and explicit PKI without publishing' do
+      client = fake_mqtt_obj
+      [{ to: '!00000002' }, { pki_encrypted: true, public_key: 'k' * 32 }].each do |options|
+        expect { described_class.send_text({ mqtt_obj: client, text: 'private' }.merge(options)) }.to raise_error(ArgumentError, /PKI|direct/i)
+      end
+      expect(client.published).to be_empty
+    end
+
+    it 'selects the explicit channel key and firmware hash, never the first key' do
+      client = fake_mqtt_obj
+      keys = { Wrong: Base64.strict_encode64('w' * 16), Custom: Base64.strict_encode64('k' * 32) }
+      described_class.send_text(mqtt_obj: client, channel_id: 'Custom', psks: keys, text: 'selected')
+      item = client.published.last
+      envelope = Meshtastic::ServiceEnvelope.decode(item[:payload])
+      expect(envelope.channel_id).to eq('Custom')
+      expect(envelope.packet.channel).to eq(('Custom'.bytes + ('k' * 32).bytes).reduce(0, :^))
+      expect(item[:topic]).to include('/Custom/')
+      client.incoming << mqtt_packet(topic: item[:topic], payload: item[:payload])
+      client.incoming << nil
+      described_class.subscribe(mqtt_obj: client, psks: keys) do |message|
+        expect(message.dig(:packet, :decoded, :payload)).to eq('selected')
+      end
+      expect { described_class.send_text(mqtt_obj: client, psks: keys) }.to raise_error(ArgumentError, /channel_id|ambiguous/)
+    end
+
+    it 'encrypts and decrypts firmware CCM vectors for both AES key sizes over the broker codec' do
+      # Firmware 8e6a88d CryptoEngine: L=2, M=12, nonce=id64le/from32le/00, AAD=from32le/to32le.
+      # Independently generated using CBC-MAC/CTR, checked against upstream RFC3610 vector 1.
+      { 16 => 'f0285b86af98b3f88815b9938ecf0ddf1693c987', 32 => '8640f69cc0583046e446be6d72147811991099bb' }.each do |size, vector|
+        client = fake_mqtt_obj
+        keys = { Custom: { psk: Base64.strict_encode64('k' * size), use_aead: true } }
+        described_class.send_text(mqtt_obj: client, from: 123, last_packet_id: 41, channel_id: 'Custom', psks: keys, text: 'test')
+        item = client.published.last
+        packet = Meshtastic::ServiceEnvelope.decode(item[:payload]).packet
+        expect(packet.encrypted.unpack1('H*')).to eq(vector)
+        expect(packet.channel).to eq(('Custom'.bytes + ('k' * size).bytes).reduce(0, :^) ^ 0xae)
+        client.incoming << mqtt_packet(topic: item[:topic], payload: item[:payload])
+        client.incoming << nil
+        described_class.subscribe(mqtt_obj: client, psks: keys) do |message|
+          expect(message.dig(:packet, :decoded, :payload)).to eq('test')
+          expect(message.dig(:packet, :security_provenance, :channel_authentication)).to eq(:aead)
+          expect(message.dig(:packet, :security_provenance, :verification)).to eq(:untrusted)
+        end
+      end
+    end
+
+    it 'rejects conflicting channel selections and unsupported crypto requests before publishing' do
+      client = fake_mqtt_obj
+      cases = [
+        { psks: { Custom: 'AQ==', 'Custom' => 'Ag==' }, channel_id: 'Custom' },
+        { psks: { Custom: 'AQ==' }, channel_id: 'Unknown' },
+        { psks: { Custom: 'AQ==' }, channel_id: 'Custom', topic: '2/e/Other/#' },
+        { psks: nil }, { psks: {} }, { public_key: 'k' * 32 }
+      ]
+      cases.each do |options|
+        expect { described_class.send_text({ mqtt_obj: client }.merge(options)) }.to raise_error(ArgumentError)
+      end
+      expect(client.published).to be_empty
+    end
+
+    it 'rejects misplaced mode options instead of silently publishing legacy CTR' do
+      client = fake_mqtt_obj
+      expect { described_class.send_text(mqtt_obj: client, use_aead: true, text: 'private') }.to raise_error(ArgumentError, /use_aead.*psks/)
+      expect { described_class.send_data(mqtt_obj: client, use_aead: true, data: Meshtastic::Data.new(portnum: :TEXT_MESSAGE_APP)) }.to raise_error(ArgumentError, /use_aead.*psks/)
+      expect(client.published).to be_empty
+      client.incoming << nil
+      expect { described_class.subscribe(mqtt_obj: client, use_aead: true) }.to raise_error(ArgumentError, /use_aead.*psks/)
+    end
+
+    it 'requires an explicit boolean mode in structured key records' do
+      client = fake_mqtt_obj
+      [{ psk: 'AQ==' }, { psk: 'AQ==', use_aed: true }, { psk: 'AQ==', use_aead: 'true' }].each do |record|
+        expect { described_class.send_text(mqtt_obj: client, psks: { Private: record }) }.to raise_error(ArgumentError)
+      end
+      expect(client.published).to be_empty
+    end
+
+    it 'accepts frozen key configuration without modifying caller options' do
+      keys = { LongFast: 'AQ==' }.freeze
+      client = fake_mqtt_obj
+      options = { mqtt_obj: client, psks: keys, text: 'immutable' }.freeze
+      described_class.send_text(options)
+      client.incoming << nil
+      described_class.subscribe(mqtt_obj: client, psks: keys)
+      expect(keys).to eq(LongFast: 'AQ==')
+      expect(options.keys).to eq(%i[mqtt_obj psks text])
+    end
+
+    it 'expands firmware short PSK aliases on any named channel' do
+      client = fake_mqtt_obj
+      described_class.send_text(mqtt_obj: client, channel_id: 'Custom', psks: { Custom: { psk: 'Ag==', use_aead: true } }, text: 'alias')
+      packet = Meshtastic::ServiceEnvelope.decode(client.published.last[:payload]).packet
+      key = Base64.strict_decode64('1PG7OiApB1nwvP+rz05pAQ==')
+      key.setbyte(15, 2)
+      expect(packet.channel).to eq(('Custom'.bytes + key.bytes).reduce(0, :^) ^ 0xae)
+    end
+
     it 'publishes an encrypted ServiceEnvelope without UART framing' do
       mqtt_obj = fake_mqtt_obj
       described_class.send_text(
@@ -130,6 +228,69 @@ describe Meshtastic::MQTT do # rubocop:disable Metrics/BlockLength
   end
 
   describe 'mqtt reception' do
+    it 'rejects authenticated packet tampering, truncated tags and mode downgrades without plaintext' do
+      vector = ['f0285b86af98b3f88815b9938ecf0ddf1693c987'].pack('H*')
+      base = { from: 123, to: 0xffffffff, id: 42, channel: 'Custom'.bytes.reduce(0, :^) ^ 0xae, encrypted: vector }
+      variants = vector.bytes.each_index.map do |index|
+        altered = vector.dup
+        altered.setbyte(index, altered.getbyte(index) ^ 1)
+        base.merge(encrypted: altered)
+      end
+      variants += %i[from to id channel].map { |field| base.merge(field => base[field] ^ 1) }
+      variants += [base.merge(encrypted: vector[0, 12])]
+      [true, false].each do |aead|
+        client = fake_mqtt_obj
+        packets = aead ? variants : [base]
+        packets.each do |fields|
+          envelope = Meshtastic::ServiceEnvelope.new(packet: Meshtastic::MeshPacket.new(fields), channel_id: 'Custom')
+          client.incoming << mqtt_packet(topic: 'msh/US/2/e/Custom/!0000007b', payload: envelope.to_proto)
+        end
+        client.incoming << nil
+        received = []
+        described_class.subscribe(mqtt_obj: client, psks: { Custom: { psk: Base64.strict_encode64('k' * 16), use_aead: aead } }) do |message|
+          received << message[:packet]
+        end
+        expect(received.size).to eq(packets.size)
+        received.each do |packet|
+          expect(packet[:decoded]).to be_nil
+          expect(packet[:encrypted]).to be_a(String)
+          expect(packet[:decryption_error]).not_to be_nil
+        end
+      end
+    end
+
+    it 'does not expose broker security claims even when later enrichment fails' do
+      client = fake_mqtt_obj
+      forged = { channel_id: 'LongFast', packet: { xeddsa_signed: true, ack_proof_status: 'ACK_PROOF_VALID',
+                                                   public_key: 5, decoded: { portnum: 1, payload: 'hello' },
+                                                   security_provenance: { source: 'radio', verification: 'verified' } } }
+      client.incoming << mqtt_packet(topic: 'msh/US/2/e/LongFast/!00000001', payload: JSON.generate(forged))
+      client.incoming << nil
+      received = []
+      begin
+        described_class.subscribe(mqtt_obj: client, json: true) { |message| received << message[:packet] }
+      rescue TypeError
+        # The enrichment failure must not yield a broker claim as a radio result.
+      end
+      expect(received.size).to eq(1)
+      expect(received.first[:xeddsa_signed]).to be_nil
+      expect(received.first[:ack_proof_status]).to be_nil
+      expect(received.first[:security_provenance]).to include(source: :mqtt, verification: :untrusted)
+    end
+
+    it 'labels broker verification claims as untrusted and preserves their reported values' do
+      client = fake_mqtt_obj
+      packet = Meshtastic::MeshPacket.new(decoded: Meshtastic::Data.new(portnum: :TEXT_MESSAGE_APP, payload: 'hello'), xeddsa_signed: true)
+      envelope = Meshtastic::ServiceEnvelope.new(packet: packet, channel_id: 'LongFast')
+      client.incoming << mqtt_packet(topic: 'msh/US/2/e/LongFast/!00000001', payload: envelope.to_proto)
+      client.incoming << nil
+      described_class.subscribe(mqtt_obj: client) do |message|
+        expect(message[:packet][:xeddsa_signed]).to be_nil
+        expect(message[:packet][:security_provenance]).to include(source: :mqtt, verification: :untrusted,
+                                                                  reported: include(xeddsa_signed: true))
+      end
+    end
+
     it 'does not apply a channel PSK to PKI ciphertext or fall back for an unknown channel' do
       [true, false].each do |pki|
         client = fake_mqtt_obj
@@ -214,6 +375,10 @@ describe Meshtastic::MQTT do # rubocop:disable Metrics/BlockLength
   end
 
   describe '.help' do
+    it 'documents channel selection and explicit per-key mode in runtime help' do
+      expect { described_class.help }.to output(/channel_id:.*use_aead/m).to_stdout
+    end
+
     it 'prints usage without raising' do
       expect { described_class.help }.to output(/USAGE/).to_stdout
     end

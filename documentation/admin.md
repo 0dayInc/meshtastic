@@ -87,6 +87,22 @@ After reboot, reconnect, complete the transport handshake, and make this request
 - `request(wait: false, ...)` retains the old `{ request_id:, result: }` submission-only API, including MQTT. Use your existing receive loop with `response` in that mode. Automatic remote session acquisition can still wait unless an explicit key or `auto_session: false` is supplied.
 - IDs are generated or supplied with `request_id:` (2 through `0xffffffff`), overriding `last_packet_id`. Use fresh IDs; deliberately reusing one cannot distinguish a stale reply. ID 1 is excluded because transport predecessor zero requests a random ID.
 
+### Delivery evidence and trust boundary (v2.8.1.8e6a88d)
+
+Synchronous `request` adds `delivery` and `security_provenance`:
+
+| `delivery` | Meaning |
+| --- | --- |
+| `:acknowledged` | Target-correlated successful routing ACK without valid device-reported ACK proof. Includes absent, invalid, unknown, and no-key proof statuses. |
+| `:device_verified` | Connected radio reports `ACK_PROOF_VALID` on the successful routing ACK matching the actual request ID **and addressed target**. This is a **device report**, not host cryptographic verification. |
+| `:readback` | Expected Admin response matched request ID and target. This is not an ACK proof or a persistence check. |
+
+`security_provenance` contains `source: :radio`, `verification: :device_reported`, and `reported: { ack_proof_status:, xeddsa_signed: }`. Raw enum values are retained, including unknown integers. A signature report **does not** substitute for ACK proof; invalid/no-key/absent proof must not be displayed as verified delivery. A local ACK cannot establish remote delivery. Even valid proof does not establish configuration persistence, application execution, or post-reboot health.
+
+Trust is assigned only inside the synchronous receive path using the already-classified radio handle's queue. `response` on caller-provided bytes (even a `FromRadio` object) instead reports `source: :unknown, verification: :untrusted`; caller-supplied provenance flags cannot promote it. MQTT publication or broker-supplied signature/proof fields cannot produce `:device_verified`. `wait: false` remains submission-only and has no verified-delivery result. Do not inject external/broker traffic into a radio handle's private receive queue.
+
+Pinned evidence: [ReliableRouter.cpp](https://github.com/meshtastic/firmware/blob/8e6a88d06f44cad26f1e8d7cd402939ccacb9b4c/src/mesh/ReliableRouter.cpp) and [mesh.proto](https://github.com/meshtastic/protobufs/blob/8f97d66a63ce10cfb12f94203e361691647f5ad3/meshtastic/mesh.proto), firmware tag **v2.8.1.8e6a88d**. ACK proof is advisory on that release; legacy/no-proof ACKs remain distinguishable rather than being silently upgraded or retried.
+
 ### Automatic sessions
 
 Remote state-changing `send` calls (including convenience setters, reboot, and firmware commands) automatically request `get_config_request: :SESSIONKEY_CONFIG` before transmitting when no passkey was supplied. Acquisition must return a correlated `get_config_response` containing exactly eight passkey bytes; otherwise the write is not sent. Reads and local PhoneAPI operations do not need acquisition. An explicit eight-byte `session_passkey:` or a passkey already in `message:` bypasses acquisition; `auto_session: false` explicitly disables it. For MQTT provide the key obtained through your own authorized receive workflow.

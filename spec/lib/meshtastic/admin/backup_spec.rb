@@ -18,7 +18,7 @@ class BackupRadioPeer
       device: Meshtastic::Config.new(device: { serial_enabled: false }),
       network: Meshtastic::Config.new(network: { wifi_enabled: true, wifi_psk: 'password' }),
       mqtt: Meshtastic::ModuleConfig.new(mqtt: { enabled: false, password: 'broker-secret' }),
-      channel: Meshtastic::Channel.new(index: 0, role: :PRIMARY, settings: { psk: "\x00\xff".b, name: 'Test' }),
+      channel: Meshtastic::Channel.new(index: 0, role: :PRIMARY, settings: { psk: "\x00\xff".b * 8, name: 'Test' }),
       ui: Meshtastic::DeviceUIConfig.new(calibration_data: "\x00\xff".b)
     }
     @handle = { serial_conn: self, my_node_num: 0xaabbccdd, from_radio_queue: Queue.new }
@@ -72,6 +72,150 @@ end
 
 describe 'Meshtastic::Admin::Backup' do
   let(:backup_api) { Meshtastic::Admin.const_get(:Backup) }
+  let(:peer) { BackupRadioPeer.new }
+  let(:options) { { transport_obj: peer.handle, config_types: [:DEVICE_CONFIG], module_config_types: [:MQTT_CONFIG], channel_indexes: [0], include_ui: true, timeout: 0.3 } }
+
+  it 'rejects semantic errors in every backup format before any requests' do
+    invalid_messages = [Meshtastic::User.new(long_name: 'é' * 13),
+                        Meshtastic::Channel.new(index: 0, settings: { psk: 'bad' }),
+                        Meshtastic::Config.new(lora: { region: 999 })]
+    invalid_messages.zip([['owner', nil], ['channel', 0], %w[config LORA_CONFIG]]).each do |message, (section, slot)|
+      document = { 'format' => backup_api::FORMAT, 'version' => 1, 'warning' => '', 'records' => [
+        { 'section' => section, 'slot' => slot, 'value' => JSON.parse(message.class.encode_json(message, preserve_proto_fieldnames: true)) }
+      ] }
+      expect { backup_api.import(transport_obj: peer.handle, backup: document, dry_run: true) }.to raise_error(ArgumentError)
+    end
+    profile = Meshtastic::DeviceProfile.new(long_name: 'é' * 13)
+    expect { backup_api.import(transport_obj: peer.handle, backup: profile.to_proto) }.to raise_error(ArgumentError)
+    expect(peer.sent).to be_empty
+  end
+
+  it 'requires explicit identity-key restoration without conflating omitted owner metadata' do
+    profile = Meshtastic::DeviceProfile.new(config: { security: { private_key: 'k' * 32, public_key: 'p' * 32 } })
+    bytes = profile.to_proto
+    expect { backup_api.import(transport_obj: peer.handle, backup: bytes) }.to raise_error(ArgumentError, /identity_keys/)
+    expect(peer.sent).to be_empty
+    result = backup_api.import(transport_obj: peer.handle, backup: bytes, identity_keys: :restore, timeout: 0.3)
+    expect(result).to include(acknowledged: 1, persistence_verified: false, reconnect_required: true)
+    expect(result[:warnings].join).to match(/node number.*reconnect/i)
+    expect(peer.sent.last.set_config.security.private_key).to eq('k' * 32)
+    expect(bytes).to eq(profile.to_proto)
+    peer.sent.clear
+    clean = Meshtastic::DeviceProfile.new(config: { security: { serial_enabled: true } })
+    expect { backup_api.import(transport_obj: peer.handle, backup: clean.to_proto, dry_run: true) }.not_to raise_error
+    expect(peer.sent).to be_empty
+  end
+
+  it 'checks policy consistently for JSON security keys and channel sharing before edit requests' do
+    messages = [[Meshtastic::Config.new(security: { public_key: 'p' * 32 }), 'config', 'SECURITY_CONFIG', { identity_keys: :restore }],
+                [Meshtastic::Channel.new(settings: { uplink_enabled: true }), 'channel', 0, { allow_privacy_changes: true }]]
+    messages.each do |message, section, slot, consent|
+      document = { 'format' => backup_api::FORMAT, 'version' => 1, 'warning' => '', 'records' => [
+        { 'section' => section, 'slot' => slot, 'value' => JSON.parse(message.class.encode_json(message, preserve_proto_fieldnames: true)) }
+      ] }
+      expect { backup_api.import(transport_obj: peer.handle, backup: document, edit_transaction: true) }.to raise_error(ArgumentError)
+      report = backup_api.import({ transport_obj: peer.handle, backup: document, dry_run: true }.merge(consent))
+      expect(report[:planned]).to eq(1)
+      expect(peer.sent).to be_empty
+    end
+  end
+
+  it 'documents explicit restore consent and reconnect limitations in runtime help' do
+    expect { backup_api.help }.to output(/identity_keys:.*:reject.*:restore.*allow_privacy_changes:.*reconnect/m).to_stdout
+  end
+
+  it 'requires privacy opt-in for location and broker sharing without silently redacting values' do
+    profiles = [Meshtastic::DeviceProfile.new(fixed_position: { latitude_i: 1 }),
+                Meshtastic::DeviceProfile.new(config: { position: {} }),
+                Meshtastic::DeviceProfile.new(module_config: { mqtt: { enabled: true } }),
+                Meshtastic::DeviceProfile.new(channel_url: Meshtastic::Admin::Channel.export_url(channels: [
+                                                                                                   Meshtastic::Channel.new(role: :PRIMARY, settings: { module_settings: { position_precision: 32 } })
+                                                                                                 ]))]
+    profiles.each do |profile|
+      bytes = profile.to_proto
+      expect { backup_api.import(transport_obj: peer.handle, backup: bytes) }.to raise_error(ArgumentError, /allow_privacy_changes/)
+      expect(peer.sent).to be_empty
+      report = backup_api.import(transport_obj: peer.handle, backup: bytes, dry_run: true, allow_privacy_changes: true)
+      expect(report[:warnings].join).to match(/privacy.*location.*MQTT/i)
+      expect(report[:planned]).to be_positive
+      expect(bytes).to eq(profile.to_proto)
+    end
+  end
+end
+
+describe 'Meshtastic::Admin::Backup telemetry privacy' do
+  let(:backup_api) { Meshtastic::Admin::Backup }
+  let(:peer) { BackupRadioPeer.new }
+
+  %i[json device_profile].each do |format|
+    context "with #{format} input" do
+      let(:telemetry) { {} }
+      let(:message) { Meshtastic::ModuleConfig.new(telemetry: telemetry) }
+      let(:backup) do
+        if format == :device_profile
+          Meshtastic::DeviceProfile.new(long_name: 'Portable', module_config: { telemetry: telemetry }).to_proto
+        else
+          JSON.generate({ 'format' => backup_api::FORMAT, 'version' => 1, 'warning' => '', 'records' => [
+                          { 'section' => 'owner', 'slot' => nil, 'value' => { 'long_name' => 'Portable' } },
+                          { 'section' => 'module_config', 'slot' => 'TELEMETRY_CONFIG',
+                            'value' => JSON.parse(message.class.encode_json(message, preserve_proto_fieldnames: true)) }
+                        ] })
+        end
+      end
+      let(:options) { { transport_obj: peer.handle, backup: backup, format: format, timeout: 0.3 } }
+
+      %i[device_telemetry_enabled environment_measurement_enabled air_quality_enabled power_measurement_enabled health_measurement_enabled].each do |flag|
+        it "rejects #{flag} before any requests, including dry runs and edit transactions" do
+          telemetry[flag] = true
+          [{}, { dry_run: true }, { edit_transaction: true }, { allow_privacy_changes: false }].each do |policy|
+            expect { backup_api.import(options.merge(policy)) }.to raise_error(ArgumentError, /allow_privacy_changes/)
+            expect(peer.sent).to be_empty
+          end
+        end
+
+        it "restores #{flag} unchanged only with explicit consent and warns without values" do
+          telemetry.merge!(flag => true, device_update_interval: 123_457)
+          original = backup.dup
+          report = backup_api.import(options.merge(allow_privacy_changes: true, dry_run: true))
+          expect(peer.sent).to be_empty
+          expect(report[:warnings].join).to match(/telemetry.*device.*environment.*air quality.*power.*health/i)
+          expect(report.inspect).not_to include('123457', 'Portable')
+          result = backup_api.import(options.merge(allow_privacy_changes: true, verify: true))
+          expect(result).to include(status: :readback_matched, acknowledged: 2, readback_matched: 2)
+          expect(peer.sent.find { |sent| sent.payload_variant == :set_module_config }.set_module_config).to eq(message)
+          expect(backup).to eq(original)
+        end
+      end
+
+      it 'permits disabled broadcasts with nonzero intervals and local display preferences' do
+        telemetry.merge!(device_telemetry_enabled: false, environment_measurement_enabled: false,
+                         air_quality_enabled: false, power_measurement_enabled: false, health_measurement_enabled: false,
+                         device_update_interval: 60, environment_update_interval: 60, air_quality_interval: 60,
+                         power_update_interval: 60, health_update_interval: 60, environment_screen_enabled: true,
+                         power_screen_enabled: true, health_screen_enabled: true, air_quality_screen_enabled: true,
+                         environment_display_fahrenheit: true)
+        result = backup_api.import(options.merge(verify: true))
+        expect(result).to include(status: :readback_matched, acknowledged: 2)
+        expect(result[:warnings].join).not_to include('Privacy:')
+        expect(peer.state[:TELEMETRY_CONFIG]).to eq(message)
+      end
+
+      it 'permits an empty telemetry section without privacy consent' do
+        result = backup_api.import(options.merge(dry_run: true))
+        expect(result).to include(status: :dry_run, planned: 2)
+        expect(result[:warnings].join).not_to include('Privacy:')
+        expect(peer.sent).to be_empty
+      end
+    end
+  end
+
+  it 'documents telemetry consent in runtime help' do
+    expect { backup_api.help }.to output(/allow_privacy_changes:.*telemetry.*device.*environment.*air quality.*power.*health/).to_stdout
+  end
+end
+
+describe 'Meshtastic::Admin::Backup export' do
+  let(:backup_api) { Meshtastic::Admin::Backup }
   let(:peer) { BackupRadioPeer.new }
   let(:options) { { transport_obj: peer.handle, config_types: [:DEVICE_CONFIG], module_config_types: [:MQTT_CONFIG], channel_indexes: [0], include_ui: true, timeout: 0.3 } }
 
@@ -153,7 +297,7 @@ describe 'Meshtastic::Admin::Backup' do
     expect(profile.canned_messages).to eq('')
     expect(peer.sent.map(&:payload_variant)).to eq(%i[get_ringtone_request get_canned_message_module_messages_request])
     peer.sent.clear
-    expect(backup_api.import(transport_obj: peer.handle, backup: result[:backup], dry_run: true)[:planned]).to eq(3)
+    expect(backup_api.import(transport_obj: peer.handle, backup: result[:backup], dry_run: true, allow_privacy_changes: true)[:planned]).to eq(3)
     expect(peer.sent).to be_empty
     [nil, 'bad', { unknown: 1 }].each do |position|
       expect { backup_api.export(opts.merge(fixed_position: position)) }.to raise_error(ArgumentError)
@@ -183,7 +327,7 @@ describe 'Meshtastic::Admin::Backup' do
       expect(profile.module_config[field.name]).to eq(peer.state[backup_api::MODULE_TYPES[index]][field.name])
     end
     peer.sent.clear
-    expect(backup_api.import(transport_obj: peer.handle, backup: result[:backup], dry_run: true)[:planned]).to eq(25)
+    expect(backup_api.import(transport_obj: peer.handle, backup: result[:backup], dry_run: true, allow_privacy_changes: true)[:planned]).to eq(25)
     expect(peer.sent).to be_empty
     peer.state[:device] = Meshtastic::Config.new(network: {})
     expect { backup_api.export(options.merge(format: :device_profile, include_ui: false, channel_indexes: [])) }.to raise_error(ArgumentError, /slot/)
@@ -219,14 +363,14 @@ describe 'Meshtastic::Admin::Backup import and JSON export' do
     Meshtastic::Config.descriptor.to_a.take(8).each { |field| config[field.name] = field.subtype.msgclass.new }
     modules = Meshtastic::LocalModuleConfig.new(version: 24)
     Meshtastic::ModuleConfig.descriptor.each { |field| modules[field.name] = field.subtype.msgclass.new }
-    config.security = Meshtastic::Config::SecurityConfig.new(private_key: "\x00\xff".b, admin_key: ['synthetic-key'], serial_enabled: false)
+    config.security = Meshtastic::Config::SecurityConfig.new(private_key: "\x00\xff".b * 16, admin_key: ['k' * 32], serial_enabled: false)
     config.lora = Meshtastic::Config::LoRaConfig.new(region: :US, tx_power: -1, frequency_offset: 1.25, ignore_incoming: [1, 0xffffffff])
     modules.mqtt = Meshtastic::ModuleConfig::MQTTConfig.new(enabled: false, password: 'synthetic-password')
     channels = Meshtastic::ChannelSet.new(settings: [{ name: 'test', psk: "\x01".b }], lora_config: config.lora)
     profile = Meshtastic::DeviceProfile.new(long_name: 'Profile', short_name: '', is_licensed: false, is_unmessagable: false,
                                             config: config, module_config: modules, channel_url: "https://meshtastic.org/e/##{Base64.urlsafe_encode64(channels.to_proto, padding: false)}",
                                             fixed_position: { latitude_i: 0, longitude_i: 0, altitude: 0 }, ringtone: '', canned_messages: '')
-    result = backup_api.import(transport_obj: peer.handle, backup: profile.to_proto, format: :device_profile, verify: true, timeout: 0.3)
+    result = backup_api.import(transport_obj: peer.handle, backup: profile.to_proto, format: :device_profile, verify: true, identity_keys: :restore, allow_privacy_changes: true, timeout: 0.3)
     expect(result).to include(status: :readback_incomplete, planned: 30, acknowledged: 30, readback_matched: 29)
     expect(result[:records].find { |record| record[:section] == 'fixed_position' }).to include(readback: :unsupported)
     expect(peer.state[:owner]).to eq(Meshtastic::User.new(long_name: 'Profile', short_name: '', is_licensed: false, is_unmessagable: false))
@@ -344,7 +488,7 @@ describe 'Meshtastic::Admin::Backup missing write ACK recovery' do
   let(:backup_api) { Meshtastic::Admin::Backup }
   let(:peer) { BackupRadioPeer.new }
   let(:profile) { Meshtastic::DeviceProfile.new(module_config: { mqtt: { enabled: true, password: 'synthetic-secret' } }, config: { lora: { region: :US } }) }
-  let(:options) { { transport_obj: peer.handle, backup: profile.to_proto, edit_transaction: true, timeout: 0.15 } }
+  let(:options) { { transport_obj: peer.handle, backup: profile.to_proto, edit_transaction: true, allow_privacy_changes: true, timeout: 0.15 } }
 
   before { peer.drop_ack_on = :set_module_config }
 
@@ -517,13 +661,13 @@ describe 'Meshtastic::Admin::Backup DeviceProfile validation' do
   it 'keeps ordinary profile writes in source plan order before disruptive sections' do
     modules = Meshtastic::ModuleConfig.descriptor.to_h { |field| [field.name.to_sym, {}] }
     profile = Meshtastic::DeviceProfile.new(long_name: 'order', ringtone: '', canned_messages: '', config: { device: {}, position: {}, power: {}, display: {}, lora: {}, security: {} }, module_config: modules)
-    plan = backup_api.import(transport_obj: peer.handle, backup: profile.to_proto, dry_run: true)[:plan]
+    plan = backup_api.import(transport_obj: peer.handle, backup: profile.to_proto, dry_run: true, allow_privacy_changes: true)[:plan]
     expect(plan.map { |entry| entry[:slot] || entry[:section] }).to eq(%w[owner ringtone canned_messages DEVICE_CONFIG POSITION_CONFIG POWER_CONFIG DISPLAY_CONFIG] + backup_api::MODULE_TYPES.map(&:to_s) + %w[LORA_CONFIG SECURITY_CONFIG])
     expect(peer.sent).to be_empty
   end
 
   it 'auto-detects binary content and cfg paths while retaining explicit and automatic JSON input' do
-    profile = Meshtastic::DeviceProfile.new(long_name: 'x' * 123, is_unmessagable: false)
+    profile = Meshtastic::DeviceProfile.new(long_name: 'x' * 24, is_unmessagable: false)
     Dir.mktmpdir do |directory|
       ['profile.cfg', 'profile.bin'].each do |name|
         path = File.join(directory, name)
@@ -683,7 +827,7 @@ describe 'Meshtastic::Admin::Backup validation and readback' do
     end
     document = backup_api.export(options.merge(config_types: backup_api::CONFIG_TYPES, module_config_types: backup_api::MODULE_TYPES, include_owner: false, include_ui: false, channel_indexes: []))[:backup]
     peer.sent.clear
-    result = backup_api.import(transport_obj: peer.handle, backup: document, timeout: 0.3)
+    result = backup_api.import(transport_obj: peer.handle, backup: document, allow_privacy_changes: true, timeout: 0.3)
     expect(result[:acknowledged]).to eq(configs.length + modules.length)
     restored = peer.sent.map { |message| message.public_send(message.payload_variant) }
     expect(restored).to match_array(configs + modules)

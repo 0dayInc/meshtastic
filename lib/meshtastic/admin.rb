@@ -3,6 +3,7 @@
 require 'timeout'
 require 'monitor'
 require 'meshtastic/admin_pb'
+require 'meshtastic/admin/validation'
 require 'meshtastic/mqtt'
 
 module Meshtastic
@@ -19,7 +20,7 @@ module Meshtastic
     end
 
     SKIP = %i[
-      message transport_obj to from channel want_ack hop_limit
+      message transport_obj to from channel channel_id want_ack hop_limit
       want_response port_num data via psks seconds owner long_name short_name index config_type
       module_config_type path node_num lat lon altitude time channel_settings channel_pb
       config module_config messages ringtone scale location event event_code kb_char touch_x
@@ -70,7 +71,7 @@ module Meshtastic
 
         message.session_passkey = passkey
       end
-      message
+      Validation.validate(message: message)
     end
 
     public_class_method def self.send(opts = {})
@@ -86,11 +87,7 @@ module Meshtastic
         message.session_passkey = acquire_session(opts.merge(connection: connection, target: destination))
       end
       want_response = opts.fetch(:want_response) { message.payload_variant.to_s.match?(/\Aget_.*_request\z/) }
-      data = Meshtastic::Data.new(
-        portnum: :ADMIN_APP,
-        payload: message.to_proto,
-        want_response: want_response
-      )
+      data = Meshtastic::Data.new(portnum: :ADMIN_APP, payload: message.to_proto, want_response: want_response)
       delivery = opts.except(:transport_obj).merge(data: data, port_num: Meshtastic::PortNum::ADMIN_APP, to: destination)
       delivery[:"#{type}_obj"] = opts[:transport_obj]
       delivery[:from] = 0 if connection && !opts.key?(:from)
@@ -176,10 +173,17 @@ module Meshtastic
            [opts[:target], opts[:connection][:my_node_num]].include?(packet.from)
           reason = Meshtastic::Routing.decode(packet.decoded.payload).error_reason
           raise RoutingError.new(reason, opts[:request_id], packet.from) if reason != :NONE && [opts[:target], opts[:connection][:my_node_num]].include?(packet.from)
-          return { variant: :routing, value: reason, request_id: opts[:request_id], from: packet.from } if reason == :NONE && packet.from == opts[:target] && opts[:variant] == :routing
+          if reason == :NONE && packet.from == opts[:target] && opts[:variant] == :routing
+            return { variant: :routing, value: reason, request_id: opts[:request_id], from: packet.from,
+                     delivery: packet.ack_proof_status == :ACK_PROOF_VALID ? :device_verified : :acknowledged,
+                     security_provenance: { source: :radio, verification: :device_reported, reported: { ack_proof_status: packet.ack_proof_status, xeddsa_signed: packet.xeddsa_signed } } }
+          end
         end
         reply = response(packet: incoming, request_id: opts[:request_id], from: opts[:target])
-        return reply if reply && reply[:variant] == opts[:variant]
+        if reply && reply[:variant] == opts[:variant]
+          reply[:security_provenance].merge!(source: :radio, verification: :device_reported)
+          return reply
+        end
 
         deferred << incoming
       end
@@ -227,8 +231,9 @@ module Meshtastic
       return nil unless variant.to_s.end_with?('_response')
 
       {
-        message: message, variant: variant, value: message.public_send(variant),
-        session_passkey: message.session_passkey, request_id: packet.decoded.request_id, from: packet.from
+        message: message, variant: variant, value: message.public_send(variant), delivery: :readback,
+        session_passkey: message.session_passkey, request_id: packet.decoded.request_id, from: packet.from,
+        security_provenance: { source: :unknown, verification: :untrusted, reported: { ack_proof_status: packet.ack_proof_status, xeddsa_signed: packet.xeddsa_signed } }
       }
     end
 
@@ -338,12 +343,8 @@ module Meshtastic
     end
 
     public_class_method def self.send_input_event(opts = {})
-      event = opts[:event] || Meshtastic::AdminMessage::InputEvent.new(
-        event_code: opts[:event_code].to_i,
-        kb_char: opts[:kb_char].to_i,
-        touch_x: opts[:touch_x].to_i,
-        touch_y: opts[:touch_y].to_i
-      )
+      event = opts[:event] || Meshtastic::AdminMessage::InputEvent.new(event_code: opts[:event_code].to_i, kb_char: opts[:kb_char].to_i,
+                                                                       touch_x: opts[:touch_x].to_i, touch_y: opts[:touch_y].to_i)
       send(opts.merge(send_input_event: event))
     end
 
@@ -471,7 +472,8 @@ module Meshtastic
           channel: 'optional - routing channel index (default zero)',
           want_ack: 'optional - request routing acknowledgment, distinct from an admin reply',
           hop_limit: 'optional - maximum radio hop count',
-          psks: 'optional - MQTT channel key map; not public-key admin authorization',
+          channel_id: 'optional - exact MQTT channel name selecting one PSK and explicit AEAD mode',
+          psks: 'optional - MQTT name to Base64 legacy PSK or {psk: Base64, use_aead: boolean} map; not public-key admin authorization',
           pki_encrypted: 'optional - enable device-owned PKI on serial BLE or TCP; unsupported over MQTT',
           public_key: 'optional - recipient public-key bytes for radio PKI',
           last_packet_id: 'optional - previous packet number used by transport packet generation',
@@ -487,6 +489,10 @@ module Meshtastic
           wait: 'optional - false returns only request_id and submission result; true waits for reply (default true)',
           timeout: 'optional - positive finite total response budget in seconds including session acquisition (default ten)'
         )
+
+        # Results distinguish :acknowledged, :device_verified and :readback.
+        # :device_verified requires a target/request-correlated ACK_PROOF_VALID from the radio queue.
+        # security_provenance retains raw proof/signature reports; verification is device_reported, never host-verified.
 
         # Decode protobuf bytes or an incoming admin packet.
         #{self}.decode(
@@ -526,8 +532,8 @@ module Meshtastic
         # Set the node owner User protobuf.
         #{self}.set_owner(
           owner: 'optional - Meshtastic::User protobuf to send as set_owner',
-          long_name: 'optional - owner long name when owner is omitted',
-          short_name: 'optional - owner short name when owner is omitted'
+          long_name: 'optional - owner long name, at most 24 UTF-8 bytes; empty means unchanged on firmware v2.8.1.8e6a88d',
+          short_name: 'optional - owner short name, at most four UTF-8 bytes; empty means unchanged'
         )
 
         # Request the node owner User protobuf.
@@ -643,11 +649,11 @@ module Meshtastic
         # Enable ham-radio identity parameters.
         #{self}.set_ham_mode(
           ham: 'optional - HamParameters protobuf to send',
-          call_sign: 'optional - amateur callsign when ham is omitted',
+          call_sign: 'optional - required within ham parameters, nonblank callsign at most seven UTF-8 bytes',
           tx_power: 'optional - transmit power when ham is omitted',
           frequency: 'optional - frequency in MHz when ham is omitted',
           short_name: 'optional - short name when ham is omitted',
-          long_name: 'optional - long name when ham is omitted'
+          long_name: 'optional - ham suffix at most fourteen UTF-8 bytes; composed CALL//suffix must fit 24 bytes; rejected, never truncated'
         )
 
         # Remove a node from the local nodedb by number.

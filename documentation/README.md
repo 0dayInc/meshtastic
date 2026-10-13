@@ -40,6 +40,7 @@ Do not open Serial and Bluetooth to the same radio at once. Always `disconnect` 
   - [Nordic legacy BLE DFU packages](admin-firmware-nordic.md)
 - [Meshtastic::ModuleConfig](module-config.md)
 - [Meshtastic::Position](position.md)
+- [Meshtastic::Waypoint](waypoint.md) — circle/box geofences and notification fields
 - [Meshtastic::Telemetry](telemetry.md)
 - [Meshtastic::Traceroute](traceroute.md)
 - [Meshtastic::RemoteHardware](remote-hardware.md)
@@ -67,4 +68,4 @@ Do not open Serial and Bluetooth to the same radio at once. Always `disconnect` 
 - [Meshtastic::Util](util.md)
 - [Generated protobuf types](protobufs.md)
 
-Protobuf message classes that this gem reopens (`Channel`, `Config`, `Position`, `Telemetry`, `ModuleConfig`, `Paxcount`) must not define class methods named `send` or `encode` (those belong to protobuf). Use `get`/`set`, `transmit`, `build`, or `request` instead.
+Protobuf message classes that this gem reopens (`Channel`, `Config`, `Position`, `Waypoint`, `Telemetry`, `ModuleConfig`, `Paxcount`) must not define class methods named `send` or `encode` (those belong to protobuf). Use `get`/`set`, `transmit`, `build`, or `request` instead.

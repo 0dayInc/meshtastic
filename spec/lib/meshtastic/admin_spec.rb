@@ -86,6 +86,21 @@ describe Meshtastic::Admin do
     expect(published.length).to eq(1)
   end
 
+  it 'passes named MQTT AEAD selection through the Admin boundary without promoting broker claims' do
+    client = MQTTClient.new(client_id: 'aabbccdd')
+    published = []
+    client.define_singleton_method(:publish) { |_topic, bytes| published << Meshtastic::ServiceEnvelope.decode(bytes) }
+    result = described_class.request(transport_obj: client, to: '!aabbccee', get_owner_request: true, wait: false,
+                                     channel_id: 'Admin', psks: { Admin: { psk: 'AQ==', use_aead: true } })
+    expect(result).not_to have_key(:delivery)
+    envelope = published.fetch(0)
+    expect(envelope.channel_id).to eq('Admin')
+    decoded = Meshtastic::MeshInterface.new.decrypt_packet(message: envelope.packet.to_h, channel: envelope.channel_id,
+                                                           psks: { Admin: { psk: 'AQ==', use_aead: true } })
+    expect(Meshtastic::AdminMessage.decode(decoded[:decoded][:payload]).get_owner_request).to be(true)
+    expect(decoded[:security_provenance][:verification]).not_to eq(:verified)
+  end
+
   it 'sends a reboot AdminMessage on ADMIN_APP' do
     serial_obj = fake_serial_obj
     described_class.reboot(transport_obj: serial_obj, seconds: 7)
@@ -162,6 +177,65 @@ module AdminSynchronousSpecHelpers
     Meshtastic::FromRadio.new(packet: Meshtastic::MeshPacket.new(from: from, decoded: Meshtastic::Data.new(
       portnum: :ADMIN_APP, request_id: request_id, payload: message.to_proto
     )))
+  end
+end
+
+describe Meshtastic::Admin, 'delivery provenance' do
+  include AdminSynchronousSpecHelpers
+
+  it 'keeps standalone or broker-origin response claims untrusted even with caller-supplied provenance' do
+    packet = Meshtastic::MeshPacket.new(from: 42, ack_proof_status: :ACK_PROOF_VALID, xeddsa_signed: true,
+                                        decoded: Meshtastic::Data.new(portnum: :ADMIN_APP, request_id: 9,
+                                                                      payload: Meshtastic::AdminMessage.new(get_owner_response: Meshtastic::User.new).to_proto))
+    result = described_class.response(packet: Meshtastic::FromRadio.new(packet: packet), from: 42, request_id: 9,
+                                      security_provenance: { source: :radio, verification: :device_reported })
+    expect(result[:delivery]).to eq(:readback)
+    expect(result[:security_provenance]).to include(source: :unknown, verification: :untrusted,
+                                                    reported: { ack_proof_status: :ACK_PROOF_VALID, xeddsa_signed: true })
+  end
+
+  it 'requires actual request ID and target rather than a local or unrelated valid proof' do
+    ignored = []
+    handle = responding_serial do |connection, packet|
+      [[packet.to, packet.id + 1], [connection[:my_node_num], packet.id], [123, packet.id]].each do |from, request_id|
+        incoming = Meshtastic::FromRadio.new(packet: Meshtastic::MeshPacket.new(from: from, ack_proof_status: :ACK_PROOF_VALID,
+                                                                                decoded: Meshtastic::Data.new(portnum: :ROUTING_APP, request_id: request_id)))
+        ignored << incoming
+        connection[:from_radio_queue] << incoming
+      end
+      connection[:from_radio_queue] << Meshtastic::FromRadio.new(packet: Meshtastic::MeshPacket.new(from: packet.to,
+                                                                                                    decoded: Meshtastic::Data.new(portnum: :ROUTING_APP, request_id: packet.id)))
+    end
+    result = described_class.request(transport_obj: handle, to: '!aabbccdd', auto_session: false, reboot_seconds: 5)
+    expect(result[:delivery]).to eq(:acknowledged)
+    expect(ignored.map { handle[:from_radio_queue].pop(true) }).to eq(ignored)
+  end
+
+  it 'identifies readback from the connected radio without treating a signature as delivery proof' do
+    handle = responding_serial do |connection, packet|
+      reply = admin_reply(packet)
+      reply.packet.xeddsa_signed = true
+      reply.packet.ack_proof_status = :ACK_PROOF_VALID
+      connection[:from_radio_queue] << reply
+    end
+    result = described_class.request(transport_obj: handle, get_device_metadata_request: true)
+    expect(result[:delivery]).to eq(:readback)
+    expect(result[:security_provenance]).to include(source: :radio, verification: :device_reported)
+  end
+
+  it 'distinguishes device-reported valid proof from signed or ordinary target ACKs' do
+    (%i[ACK_PROOF_VALID ACK_PROOF_ABSENT ACK_PROOF_INVALID ACK_PROOF_NO_KEY] + [99]).each do |proof|
+      handle = responding_serial do |connection, packet|
+        connection[:from_radio_queue] << Meshtastic::FromRadio.new(packet: Meshtastic::MeshPacket.new(
+          from: packet.to, ack_proof_status: proof, xeddsa_signed: true,
+          decoded: Meshtastic::Data.new(portnum: :ROUTING_APP, request_id: packet.id, payload: Meshtastic::Routing.new.to_proto)
+        ))
+      end
+      result = described_class.request(transport_obj: handle, to: '!aabbccdd', auto_session: false, reboot_seconds: 5)
+      expect(result[:delivery]).to eq(proof == :ACK_PROOF_VALID ? :device_verified : :acknowledged)
+      expect(result[:security_provenance]).to include(source: :radio, verification: :device_reported,
+                                                      reported: { ack_proof_status: proof, xeddsa_signed: true })
+    end
   end
 end
 
@@ -398,6 +472,9 @@ describe Meshtastic::Admin, 'generated schema coverage' do
               when :enum then 0
               else 1
               end
+      value = Meshtastic::Config.new(device: {}) if %w[set_config get_config_response].include?(field.name)
+      value = Meshtastic::ModuleConfig.new(mqtt: {}) if %w[set_module_config get_module_config_response].include?(field.name)
+      value = Meshtastic::HamParameters.new(call_sign: 'N0CALL') if field.name == 'set_ham_mode'
       message = described_class.encode(field.name.to_sym => value)
       decoded = described_class.decode(payload: message.to_proto)
       expect(decoded.payload_variant).to eq(field.name.to_sym)

@@ -39,7 +39,7 @@ describe Meshtastic::ModuleConfig do
     %i[get set].each do |operation|
       it "encodes a real Admin packet for #{operation} with #{key}" do
         connection = fake_serial_obj
-        options = { key => connection, module_config: Meshtastic::ModuleConfig.new }
+        options = { key => connection, module_config: Meshtastic::ModuleConfig.new(mqtt: {}) }
         options[:bluetooth_obj] = nil
         described_class.public_send(operation, options.freeze)
         frame = connection[:written]

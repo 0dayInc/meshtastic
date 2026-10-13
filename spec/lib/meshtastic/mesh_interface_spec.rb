@@ -2,6 +2,38 @@
 
 require 'spec_helper'
 require_relative '../../support/payload_fixtures'
+require_relative '../../support/channel_crypto_reference'
+
+describe Meshtastic::MeshInterface, 'pinned firmware CCM interoperability' do
+  it 'validates the independent reference against firmware RFC3610 vector 1' do
+    hex = ->(value) { [value].pack('H*') }
+    bytes = ChannelCryptoReference.encrypt(
+      key: hex.call('C0C1C2C3C4C5C6C7C8C9CACBCCCDCECF'), nonce: hex.call('00000003020100A0A1A2A3A4A5'),
+      aad: hex.call('0001020304050607'), plain: hex.call('08090A0B0C0D0E0F101112131415161718191A1B1C1D1E'), tag_len: 8
+    )
+    expect(bytes.unpack1('H*')).to eq('588c979a61c663d2f066d0c2c0f989806d5f6b61dac38417e8d12cfdf926e0')
+  end
+
+  it 'matches the firmware smoke inputs using an independent reference and decodes the fixed result' do
+    plain = ['08011204746573744800'].pack('H*')
+    key = Base64.strict_decode64('1PG7OiApB1nwvP+rz05pAQ==')
+    encrypted = ChannelCryptoReference.encrypt(key: key, nonce: [0xaabbccdd, 0, 0x12345678, 0].pack('V4')[0, 13],
+                                               aad: [0x12345678, 0xaaaa].pack('V2'), plain: plain)
+    expect(encrypted.unpack1('H*')).to eq('62bb832909c076bb019632d85aac0b9db32ae40cbe95')
+    packet = { id: 0xaabbccdd, from: 0x12345678, to: 0xaaaa, encrypted: encrypted }
+    result = described_class.new.decrypt_packet(message: packet, channel: 'LongFast',
+                                                psks: { LongFast: { psk: 'AQ==', use_aead: true } })
+    expect(result[:decoded]).to eq(Meshtastic::Data.decode(plain).to_h)
+  end
+
+  it 'independently reproduces both broker broadcast golden vectors' do
+    { 16 => 'f0285b86af98b3f88815b9938ecf0ddf1693c987', 32 => '8640f69cc0583046e446be6d72147811991099bb' }.each do |size, expected|
+      bytes = ChannelCryptoReference.encrypt(key: 'k' * size, nonce: [42, 0, 123, 0].pack('V4')[0, 13],
+                                             aad: [123, 0xffffffff].pack('V2'), plain: ['0801120474657374'].pack('H*'))
+      expect(bytes.unpack1('H*')).to eq(expected)
+    end
+  end
+end
 
 describe Meshtastic::MeshInterface do
   include PayloadFixtures
@@ -150,6 +182,15 @@ describe Meshtastic::MeshInterface do
     expect(result[:encrypted]).to eq(encrypted)
   end
 
+  it 'rejects duplicate named PSKs rather than silently choosing a string or symbol entry' do
+    packet = { from: 123, to: 0xffffffff, id: 42, channel: 'Custom'.bytes.reduce(0, :^) ^ 0xae,
+               encrypted: ['f0285b86af98b3f88815b9938ecf0ddf1693c987'].pack('H*') }
+    keys = { 'Custom' => { psk: Base64.strict_encode64('k' * 16), use_aead: true }, Custom: 'AQ==' }
+    result = described_class.new.decrypt_packet(message: packet, psks: keys, channel: 'Custom', source: :mqtt)
+    expect(result[:decoded]).to be_nil
+    expect(result[:decryption_error]).not_to be_nil
+  end
+
   it 'preserves already decoded PKI packets and ciphertext on invalid channel keys' do
     decoded = { decoded: { portnum: :ROUTING_APP }, pki_encrypted: true }
     expect(OpenSSL::Cipher).not_to receive(:new)
@@ -180,6 +221,19 @@ describe Meshtastic::MeshInterface do
         from: 1, to: 2, via: :mqtt, pki_encrypted: true, public_key: 'k' * 32
       )
     end.to raise_error(ArgumentError, /PKI.*radio/)
+  end
+
+  it 'documents explicit PKI and per-channel crypto options in instance help' do
+    expect { described_class.new.help }.to output(/pki_encrypted:.*public_key:.*channel_id:.*use_aead/m).to_stdout
+  end
+
+  it 'forwards explicit PKI text options to the device without encrypting on the host' do
+    wire = described_class.new.send_text(from: 1, to: 2, text: 'private', psks: nil,
+                                         pki_encrypted: true, public_key: 'k' * 32)
+    packet = Meshtastic::ToRadio.decode(wire).packet
+    expect(packet.pki_encrypted).to be true
+    expect(packet.public_key).to eq('k' * 32)
+    expect(packet.decoded.payload).to eq('private')
   end
 
   it 'rejects malformed recipient public keys' do
