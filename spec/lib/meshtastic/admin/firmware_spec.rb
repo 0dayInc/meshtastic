@@ -134,7 +134,7 @@ RSpec.describe Meshtastic::Admin::Firmware do
     handle = { serial_conn: Object.new, my_node_num: 123 }
     expect(Meshtastic::Serial).to receive(:wait_for_config).with(serial_obj: handle, timeout: 1).and_return(handle)
     expect(Meshtastic::Serial).to receive(:disconnect).with(serial_obj: handle)
-    expect(Meshtastic::Admin).to receive(:request).with(transport_obj: handle, get_device_metadata_request: true, timeout: 1)
+    expect(Meshtastic::Admin).to receive(:request).with(transport_obj: handle, to: 123, get_device_metadata_request: true, timeout: 1)
                                                   .and_return(value: Meshtastic::DeviceMetadata.new(firmware_version: 'expected'))
     result = described_class.verify_reboot(transport: :serial, reconnect: ->(_options) { handle },
                                            expected_version: 'expected', reboot_delay: 0, timeout: 1)

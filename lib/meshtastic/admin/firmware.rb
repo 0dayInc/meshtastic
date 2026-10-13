@@ -125,8 +125,11 @@ module Meshtastic
       public_class_method def self.verify_reboot(opts = {})
         validate_verification(opts.merge({}))
         handle = nil
-        transport = { tcp: Meshtastic::TCP, bluetooth: Meshtastic::Bluetooth, serial: Meshtastic::Serial }.fetch(opts.fetch(:transport))
-        key = { tcp: :tcp_obj, bluetooth: :bluetooth_obj, serial: :serial_obj }.fetch(opts.fetch(:transport))
+        handle_type = nil
+        transports = { tcp: Meshtastic::TCP, bluetooth: Meshtastic::Bluetooth, serial: Meshtastic::Serial }
+        keys = { tcp: :tcp_obj, bluetooth: :bluetooth_obj, serial: :serial_obj }
+        transport = transports.fetch(opts.fetch(:transport))
+        key = keys.fetch(opts.fetch(:transport))
         Timeout.timeout(opts.fetch(:timeout, 60)) do
           sleep opts.fetch(:reboot_delay, 3)
           begin
@@ -135,6 +138,9 @@ module Meshtastic
                      else
                        transport.connect(opts.fetch(:connection).merge(want_config: true))
                      end
+            handle_type = Admin.transport_type(transport_obj: handle)
+            raise ArgumentError, 'Reconnect transport does not match selected transport' unless handle_type == opts.fetch(:transport)
+
             transport.wait_for_config(key => handle, timeout: opts.fetch(:timeout, 60))
           rescue IOError, SystemCallError
             transport.disconnect(key => handle) if handle
@@ -142,25 +148,50 @@ module Meshtastic
             sleep 0.25
             retry
           end
-          reply = Admin.request(transport_obj: handle, get_device_metadata_request: true, timeout: opts.fetch(:timeout, 60))
+          node = handle[:my_node_num]
+          identity = verify_identity(opts.merge(handle: handle, node: node))
+          reply = Admin.request(transport_obj: handle, to: node, get_device_metadata_request: true, timeout: opts.fetch(:timeout, 60))
           metadata = reply.fetch(:value).to_h
-          raise IOError, "Firmware version mismatch: #{metadata[:firmware_version].inspect}" unless metadata[:firmware_version] == opts.fetch(:expected_version)
-          raise IOError, 'Post-reboot node identity mismatch' if opts[:expected_node] && handle[:my_node_num] != opts[:expected_node]
+          raise IOError, 'Firmware version mismatch' unless metadata[:firmware_version] == opts.fetch(:expected_version)
+          raise IOError, 'Post-reboot node changed during verification' unless handle[:my_node_num] == node
 
-          { status: :boot_verified, firmware_version: metadata[:firmware_version], node_num: handle[:my_node_num], metadata: metadata }
+          { status: :boot_verified, firmware_version: metadata[:firmware_version], node_num: node, node_id: format('!%08x', node), metadata: metadata }.merge(identity)
         end
       ensure
-        transport.disconnect(key => handle) if handle
+        transports.fetch(handle_type).disconnect(keys.fetch(handle_type) => handle) if handle && transports.key?(handle_type)
+      end
+
+      private_class_method def self.verify_identity(opts = {})
+        node = opts[:node]
+        raise IOError, 'Missing valid local node identity' unless node.is_a?(Integer) && (1...0xffffffff).cover?(node)
+        raise IOError, 'Post-reboot node identity mismatch' if opts[:expected_node] && node != opts[:expected_node]
+        return {} unless opts[:expected_public_key]
+
+        reply = Admin.request(transport_obj: opts[:handle], to: node, get_owner_request: true, timeout: opts.fetch(:timeout, 60))
+        raise IOError, 'Post-reboot public-key identity mismatch' unless reply.fetch(:value).public_key == opts[:expected_public_key]
+
+        result = { identity: :public_key_continuity }
+        return result unless opts[:previous_node]
+
+        result.merge(previous_node_num: opts[:previous_node], previous_node_id: format('!%08x', opts[:previous_node]), node_changed: node != opts[:previous_node])
       end
 
       private_class_method def self.validate_verification(opts = {})
         raise ArgumentError, 'verify must be a Hash of verify_reboot options' unless opts.is_a?(Hash)
 
-        allowed = %i[transport connection expected_version expected_node reconnect timeout reboot_delay]
+        allowed = %i[transport connection expected_version expected_node expected_public_key previous_node reconnect timeout reboot_delay]
         raise ArgumentError, 'Unknown reboot verification option' unless (opts.keys - allowed).empty?
         raise ArgumentError, 'transport must be :tcp, :bluetooth or :serial' unless %i[tcp bluetooth serial].include?(opts[:transport])
         raise ArgumentError, 'expected_version must be a nonempty firmware version String' unless opts[:expected_version].is_a?(String) && !opts[:expected_version].empty?
-        raise ArgumentError, 'expected_node must be a numeric node ID' if opts.key?(:expected_node) && !(opts[:expected_node].is_a?(Integer) && (1..0xffffffff).cover?(opts[:expected_node]))
+
+        %i[expected_node previous_node].each do |name|
+          raise ArgumentError, "#{name} must be a unicast numeric node ID" if opts.key?(name) && !(opts[name].is_a?(Integer) && (1...0xffffffff).cover?(opts[name]))
+        end
+        if opts.key?(:expected_public_key)
+          key = opts[:expected_public_key]
+          raise ArgumentError, 'expected_public_key must be 32 nonzero raw bytes' unless key.is_a?(String) && key.bytesize == 32 && key.bytes.any?(&:positive?)
+        end
+        raise ArgumentError, 'previous_node requires expected_public_key continuity' if opts.key?(:previous_node) && !opts[:expected_public_key]
 
         timeout = opts.fetch(:timeout, 60)
         delay = opts.fetch(:reboot_delay, 3)
@@ -300,7 +331,9 @@ module Meshtastic
             transport: 'required - :tcp, :bluetooth or :serial for the restarted application',
             connection: 'optional - connect options Hash with explicit host/address/block_dev; required without reconnect',
             expected_version: 'required - exact firmware version reported by the intended application',
-            expected_node: 'optional - numeric node identity to verify after restart',
+            expected_node: 'optional - strict numeric post-restart node identity; never relaxed by key continuity',
+            expected_public_key: 'optional - trusted pre-upgrade public identity, 32 raw bytes; compared with fresh local owner reply',
+            previous_node: 'optional - pre-upgrade numeric node for changed mapping output; requires expected_public_key',
             reconnect: 'optional - callable accepting options Hash and returning a newly connected transport handle',
             timeout: 'optional - entire reboot/reconnect/config/metadata deadline seconds, default 60',
             reboot_delay: 'optional - initial wait for loader restart, default 3 seconds'

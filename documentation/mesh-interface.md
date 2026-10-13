@@ -14,13 +14,13 @@ Packet builder used by Serial, Bluetooth, TCP, and MQTT. Instantiated internally
 - `send_data` / `send_text`
 - `send_to_radio` / `send_to_mqtt` — serialize only
 - `decode_payload` — shared protobuf/text/binary decoding; [complete port inventory](#receive-payload-coverage)
-- `decrypt_packet` — selected channel AES-CTR only; ciphertext preserved on failure
+- `decrypt_packet` — exact channel AES-CTR or AES-CCM (AEAD); ciphertext preserved on failure
 - `help` / `authors`
 
 On Serial/Bluetooth/TCP, transports pass `psks: nil` so the radio owns channel crypto. MQTT must pass `psks`.
 
-`send_data` and `send_packet` preserve `pki_encrypted: true` and `public_key:`
-(32 raw bytes) for remote administrative requests. The connected radio performs
+`send_text`, `send_data` and `send_packet` preserve `pki_encrypted: true` and `public_key:`
+(32 raw bytes) for radio-owned direct messaging and remote administrative requests. The connected radio performs
 the public-key encryption; the Ruby client does not encrypt these packets itself.
 Explicit PKI requests reject MQTT and host-side PSK encryption instead of silently
 falling back to channel encryption. Supplying a recipient key does not grant admin
@@ -46,7 +46,7 @@ text_bytes = mesh.send_text(
 envelope = mesh.send_text(
   from: '!c0ffee00',
   to: '!ffffffff',
-  channel: 93,
+  channel_id: 'LongFast', # exact name; firmware hash is computed
   text: 'Hello MQTT',
   via: :mqtt,
   psks: { LongFast: 'AQ==' }
@@ -184,21 +184,49 @@ This is schema dispatch, not decompression of arbitrary bytes.
 
 ### Encryption boundary
 
-`decrypt_packet(message:, psks:, channel:)` preserves already-decoded packets,
-even if PKI metadata is present. MQTT selects the exact `ServiceEnvelope.channel_id`
+`decrypt_packet(message:, psks:, channel:, source:)` preserves already-decoded payloads,
+even if PKI metadata is present, but always attaches host-created security provenance.
+MQTT passes `source: :mqtt` and selects the exact `ServiceEnvelope.channel_id`
 (string or symbol PSK key), using the topic channel only when the envelope omits it.
-It never falls back from an unknown channel to LongFast. Radio ciphertext carries
-an eight-bit XOR hash of channel name and key, not a local channel slot; only a
-unique matching configured name/key is selected. Hash collisions are refused.
-Supply the actual firmware channel name and full Base64 16- or 32-byte key.
-Subscription wrappers also accept the existing `LongFast: 'AQ=='` shorthand.
+Unknown names never fall back. Radio ciphertext uses the unique eight-bit XOR hash
+of name and expanded key, additionally XOR `0xAE` for an AEAD channel. Hash collisions
+and duplicate string/symbol key names are refused.
 
-PKI ciphertext is never fed to an AES channel cipher. Missing/ambiguous/invalid keys
-and malformed decrypted `Data` preserve ciphertext with `:decryption_error`.
-Successful channel decoding retains the existing `encrypted: :decrypted` marker.
-AES-CTR is unauthenticated: valid protobuf parsing is not proof the key was correct
-or the sender authentic. Device-owned private-key decryption remains the radio's
-responsibility. No private-key discovery or downgrade fallback is performed.
+Supply `psks: { Name: base64_key }` for legacy CTR or
+`psks: { Name: { psk: base64_key, use_aead: true } }` for CCM. Modes are configured
+per key, not detected by trial. Firmware aliases 1–255 expand on any channel name;
+otherwise require full 16/32-byte keys. Unlike firmware, arbitrary short keys are
+not padded and inherited secondary keys must be resolved by the caller.
+
+MQTT sends accept `channel_id:` (mandatory with multiple keys); they compute the
+firmware hash instead of using the old arbitrary numeric `channel:`. MQTT refuses
+plaintext fallback, explicit recipient PKI options, and nonbroadcast text, including
+text supplied as `Data`. Other channel-addressed application Data is not PKI.
+Serial/Bluetooth/TCP retain device channel-slot semantics and pass `psks: nil`.
+
+PKI ciphertext is never fed to an AES channel cipher. Missing/ambiguous/invalid keys,
+mode/hash mismatches, failed CCM tags and malformed decrypted Data preserve ciphertext
+with `:decryption_error`. Success retains `encrypted: :decrypted`. No fallback cipher
+or key is tried. AES-CTR parsing is not authentication.
+
+`:security_provenance` records `source: :radio, verification: :device_reported` for
+the three radio subscriptions (the direct helper defaults to `source: :radio`).
+The original `xeddsa_signed` and `ack_proof_status` are retained and copied under
+`:reported`. These are the connected device's reports, not host cryptographic checks.
+For MQTT, `source: :mqtt, verification: :untrusted`; those fields are removed from
+the top-level packet and preserved only under `:reported`. Broker-created provenance
+is overwritten. Successful host decryption adds `channel_authentication: :aead` or
+`:none`; channel-key possession does not prove sender identity, ACK validity or freshness.
+Raw FromRadio/protobuf APIs do not add this host-only metadata.
+
+Channel crypto is pinned to **v2.8.1.8e6a88d**, firmware
+`8e6a88d06f44cad26f1e8d7cd402939ccacb9b4c`, protobuf
+`8f97d66a63ce10cfb12f94203e361691647f5ad3`. CCM uses a 13-byte nonce
+`packet_id64le || from32le || 00`, AAD `from32le || to32le`, and appends a 12-byte tag.
+CTR uses the same prefix in a 16-byte nonce. See [MQTT](mqtt.md#pinned-firmware-interoperability)
+for source links, key selection, OpenSSL requirements, nonce-reuse limits and examples.
+No host XEdDSA signing/verification, PKI encryption/decryption or ACK-proof verification
+is implemented by these channel helpers.
 
 ### Verification
 

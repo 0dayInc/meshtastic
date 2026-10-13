@@ -25,10 +25,7 @@ module Meshtastic
           value = field.subtype.msgclass.new(value) if value.is_a?(Hash) && field.subtype
           settings[field.name] = value
         end
-        raise ArgumentError, 'PSK must contain 0, 1, 16, or 32 raw bytes' unless [0, 1, 16, 32].include?(settings.psk.bytesize)
-        raise ArgumentError, 'channel name must be fewer than 12 bytes' unless settings.name.bytesize < 12
-
-        settings
+        Validation.validate(message: settings)
       end
 
       public_class_method def self.build(opts = {})
@@ -38,10 +35,8 @@ module Meshtastic
 
         channel.index = index
         channel.role = opts[:role] if opts[:role]
-        raise ArgumentError, 'role must be PRIMARY, SECONDARY, or DISABLED' unless %i[PRIMARY SECONDARY DISABLED].include?(channel.role)
-
         channel.settings = build_settings(opts.merge(settings: opts.fetch(:settings, channel.settings)))
-        channel
+        Validation.validate(message: channel)
       end
 
       public_class_method def self.get(opts = {})
@@ -82,7 +77,7 @@ module Meshtastic
         channel_set = Meshtastic::ChannelSet.decode(Base64.urlsafe_decode64(uri.fragment))
         raise ArgumentError, 'invalid channel URL' unless (1..8).cover?(channel_set.settings.length)
 
-        channel_set
+        Validation.validate(message: channel_set)
       rescue URI::InvalidURIError, Google::Protobuf::ParseError, ArgumentError, TypeError
         raise ArgumentError, 'invalid channel URL'
       end

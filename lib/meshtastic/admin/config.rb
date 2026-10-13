@@ -100,6 +100,49 @@ module Meshtastic
         set(opts.merge(config: Meshtastic::Config.new(device_ui: opts.fetch(:device_ui))))
       end
 
+      public_class_method def self.set_packet_signature_policy(opts = {})
+        policy = opts.fetch(:policy)
+        enum = Meshtastic::Config::SecurityConfig::PacketSignaturePolicy
+        valid = policy.is_a?(Symbol) ? enum.resolve(policy) : (policy.is_a?(Integer) && enum.lookup(policy))
+        raise ArgumentError, 'policy must be a known PacketSignaturePolicy symbol or integer' unless valid
+
+        section = Meshtastic::Config::SecurityConfig.new(packet_signature_policy: policy)
+        Admin::Validation.validate(message: Meshtastic::AdminMessage.new(set_config: Meshtastic::Config.new(security: section)))
+        update_field(opts.except(:policy).merge(section: :security, config_type: :SECURITY_CONFIG, field: :packet_signature_policy,
+                                                value: section.packet_signature_policy))
+      end
+
+      public_class_method def self.set_receive_only(opts = {})
+        enabled = opts.fetch(:enabled)
+        raise ArgumentError, 'enabled must be true or false' unless [true, false].include?(enabled)
+        raise ArgumentError, 'receive-only requires a local radio connection' if Admin.transport_type(opts) == :mqtt
+
+        connection = opts.fetch(:transport_obj)
+        target = opts.fetch(:to, connection[:my_node_num])
+        target = target.delete_prefix('!').to_i(16) if target.is_a?(String) && target.match?(/\A![0-9a-fA-F]{8}\z/)
+        raise ArgumentError, 'receive-only requires the local node for reliable readback and recovery' unless target && target == connection[:my_node_num]
+
+        update_field(opts.except(:enabled).merge(section: :lora, config_type: :LORA_CONFIG, field: :tx_enabled, value: !enabled))
+      end
+
+      private_class_method def self.update_field(opts = {})
+        section = opts.fetch(:section)
+        field = opts.fetch(:field)
+        value = opts.fetch(:value)
+        options = opts.except(:section, :field, :value, :config_type, :wait, :request_id).merge(wait: true)
+        query = options.merge(get_config_request: opts.fetch(:config_type))
+        before = Admin.request(query).fetch(:value)
+        raise IOError, "expected #{section} configuration readback" unless before.is_a?(Meshtastic::Config) && before.payload_variant == section
+
+        intended = Meshtastic::Config.decode(before.to_proto)
+        intended.public_send(section).public_send("#{field}=", value)
+        acknowledgment = Admin.request(options.merge(set_config: intended))
+        readback = Admin.request(query)
+        actual = readback.fetch(:value)
+        matched = actual.is_a?(Meshtastic::Config) && actual.payload_variant == section && actual.public_send(section).public_send(field) == value
+        { acknowledgment: acknowledgment, readback: readback, matched: matched, reboot_requested: false }
+      end
+
       public_class_method def self.authors
         "AUTHOR(S):\n        0day Inc. <support@0dayinc.com>\n      "
       end
@@ -115,7 +158,7 @@ module Meshtastic
           # Write a Config protobuf to the node.
           #{self}.set(
             transport_obj: 'required - connected Serial, Bluetooth, TCP handle or MQTT client',
-            config: 'required - Meshtastic::Config protobuf to write'
+            config: 'required - Config protobuf with exactly one selected section; empty outer messages and unknown enum values are rejected; device_ui uses dedicated store operation'
           )
 
           # Request DEVICE_CONFIG from the node.
@@ -203,6 +246,25 @@ module Meshtastic
 
           # Write device UI configuration to node.
           #{self}.set_device_ui(device_ui: 'required - DeviceUIConfig protobuf or field hash')
+
+          # Change signature policy preserving other security fields with fresh readback.
+          #{self}.set_packet_signature_policy(
+            transport_obj: 'required - connected radio handle with receive queue; MQTT unsupported',
+            policy: 'required - PACKET_SIGNATURE_POLICY_COMPATIBLE, BALANCED or STRICT enum symbol with full prefix, or known integer',
+            to: 'optional - target node, defaults to connected radio; accepts shared Admin request options',
+            timeout: 'optional - per-request positive deadline seconds; default ten'
+          )
+
+          # Set local LoRa transmit enablement with fresh readback.
+          #{self}.set_receive_only(
+            transport_obj: 'required - local connected radio with receive queue; remote targets and MQTT rejected',
+            enabled: 'required - true disables LoRa transmission, false enables it; preserves other LoRa fields',
+            to: 'optional - must equal the connected local node number',
+            timeout: 'optional - per-request positive deadline seconds; default ten'
+          )
+          # Helpers return acknowledgment, readback, matched and reboot_requested false.
+          # They do not request reboot; firmware may itself reboot/disconnect after settings changes.
+          # Timeout propagates without replay; reconnect and read back before retrying mutations.
 
           # Print the AUTHOR(S) string for this module.
           #{self}.authors

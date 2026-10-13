@@ -3,7 +3,7 @@
 require 'spec_helper'
 require_relative '../../support/payload_fixtures'
 
-describe Meshtastic::Bluetooth do
+describe Meshtastic::Bluetooth do # rubocop:disable Metrics/BlockLength
   include PayloadFixtures
 
   it 'decodes every application fixture received from GATT including malformed and default messages' do
@@ -15,6 +15,31 @@ describe Meshtastic::Bluetooth do
       end
       expect(received.dig(:packet, :decoded, :payload)).to eq(expected), "port #{port} bytes #{bytes.inspect}"
     end
+  end
+
+  it 'preserves device security provenance and decrypts AEAD through GATT' do
+    handle = connect
+    packet = Meshtastic::MeshPacket.new(from: 123, to: 0xffffffff, id: 42,
+                                        channel: 'Custom'.bytes.reduce(0, :^) ^ 0xae,
+                                        encrypted: ['f0285b86af98b3f88815b9938ecf0ddf1693c987'].pack('H*'),
+                                        xeddsa_signed: true, ack_proof_status: :ACK_PROOF_VALID)
+    connection.incoming << Meshtastic::FromRadio.new(packet: packet).to_proto
+    received = Timeout.timeout(2) do
+      described_class.subscribe(bluetooth_obj: handle, psks: { Custom: { psk: Base64.strict_encode64('k' * 16), use_aead: true } }) { |message| break message }
+    end
+    expect(received.dig(:packet, :decoded, :payload)).to eq('test')
+    expect(received.dig(:packet, :security_provenance)).to include(source: :radio, verification: :device_reported,
+                                                                   reported: { xeddsa_signed: true, ack_proof_status: :ACK_PROOF_VALID }, channel_authentication: :aead)
+  end
+
+  it 'forwards PKI text through the real GATT ToRadio codec' do
+    handle = connect
+    described_class.send_text(bluetooth_obj: handle, text: 'private', to: '!00000002', pki_encrypted: true, public_key: 'k' * 32)
+    packet = Meshtastic::ToRadio.decode(connection.writes.last).packet
+    expect(packet.pki_encrypted).to be true
+    expect(packet.public_key).to eq('k' * 32)
+    expect(packet.decoded.payload).to eq('private')
+    expect(packet.encrypted).to be_empty
   end
 
   let(:connection) do

@@ -72,16 +72,17 @@ module Meshtastic
 
     public_class_method def self.subscribe(opts = {})
       mqtt_obj = opts[:mqtt_obj]
+      raise ArgumentError, 'use_aead belongs inside each psks channel record' if opts.key?(:use_aead)
+
       root_topic = opts[:root_topic] ||= 'msh'
       region = opts[:region] ||= 'US'
       topic = opts[:topic] ||= '2/e/LongFast/#'
-      # TODO: Support Array of PSKs and attempt each until decrypted
+      # Exact channel-name selection; never probe alternative keys or modes.
 
       public_psk = '1PG7OiApB1nwvP+rz05pAQ=='
       psks = opts[:psks] ||= { LongFast: public_psk }
       raise 'ERROR: psks parameter must be a hash of :channel_id => psk key value pairs' unless psks.is_a?(Hash)
 
-      psks[:LongFast] = public_psk if psks[:LongFast] == 'AQ=='
       mui = Meshtastic::MeshInterface.new
       psks = mui.get_cipher_keys(psks: psks)
 
@@ -121,6 +122,10 @@ module Meshtastic
           next unless decoded_payload_hash[:packet].is_a?(Hash)
 
           message = decoded_payload_hash[:packet] if decoded_payload_hash.keys.include?(:packet)
+          mui.decrypt_packet(
+            message: message, psks: psks, source: :mqtt,
+            channel: decoded_payload_hash[:channel_id].to_s.empty? ? raw_topic.split('/')[-2].to_s : decoded_payload_hash[:channel_id]
+          )
           message[:topic] = raw_topic
           message[:node_id_from] = "!#{message[:from].to_i.to_s(16)}"
           message[:node_id_to] = "!#{message[:to].to_i.to_s(16)}"
@@ -136,11 +141,6 @@ module Meshtastic
             raw_public_key = message[:public_key]
             message[:public_key] = Base64.strict_encode64(raw_public_key)
           end
-
-          mui.decrypt_packet(
-            message: message, psks: psks,
-            channel: decoded_payload_hash[:channel_id].to_s.empty? ? raw_topic.split('/')[-2].to_s : decoded_payload_hash[:channel_id]
-          )
 
           if message[:decoded]
             # payload = Meshtastic::Data.decode(message[:decoded][:payload]).to_h
@@ -228,12 +228,13 @@ module Meshtastic
     #   psks: 'optional - hash of :channel_id => psk key value pairs (default: { LongFast: "AQ==" })'
     # )
     public_class_method def self.send_text(opts = {})
+      opts = opts.dup
       mqtt_obj = opts[:mqtt_obj]
       opts[:from] ||= mqtt_obj.client_id
       opts[:to] ||= '!ffffffff'
       opts[:root_topic] ||= 'msh'
       opts[:region] ||= 'US'
-      opts[:topic] ||= '2/e/LongFast/#'
+      opts[:topic] ||= "2/e/#{opts[:channel_id] || (opts[:psks]&.size == 1 ? opts[:psks].keys.first : 'LongFast')}/#"
       opts[:topic] = opts[:topic].to_s.gsub('/#', '')
       opts[:channel] ||= 6
       absolute_topic = "#{opts[:root_topic]}/#{opts[:region]}/#{opts[:topic]}/#{opts[:from]}"
@@ -260,7 +261,7 @@ module Meshtastic
       opts[:to] ||= '!ffffffff'
       opts[:root_topic] ||= 'msh'
       opts[:region] ||= 'US'
-      opts[:topic] ||= '2/e/LongFast/#'
+      opts[:topic] ||= "2/e/#{opts[:channel_id] || (opts[:psks]&.size == 1 ? opts[:psks].keys.first : 'LongFast')}/#"
       opts[:topic] = opts[:topic].to_s.gsub('/#', '')
       opts[:channel] ||= 6
       absolute_topic = "#{opts[:root_topic]}/#{opts[:region]}/#{opts[:topic]}/#{opts[:from]}"
@@ -314,7 +315,7 @@ module Meshtastic
           root_topic: 'optional - value for root_topic passed into subscribe',
           region: 'optional - value for region passed into subscribe',
           topic: 'optional - value for topic passed into subscribe',
-          psks: 'optional - value for psks passed into subscribe',
+          psks: 'optional - channel names to Base64 keys or { psk: Base64, use_aead: true/false }; configured mode only',
           qos: 'optional - value for qos passed into subscribe',
           json: 'optional - value for json passed into subscribe',
           exclude: 'optional - value for exclude passed into subscribe',
@@ -331,7 +332,11 @@ module Meshtastic
           root_topic: 'optional - value for root_topic passed into send_text',
           region: 'optional - value for region passed into send_text',
           topic: 'optional - value for topic passed into send_text',
-          channel: 'optional - value for channel passed into send_text',
+          channel_id: 'optional - exact PSK channel name; required for multiple keys',
+          psks: 'optional - channel names to Base64 keys or { psk: Base64, use_aead: true/false }',
+          pki_encrypted: 'optional - unsupported on MQTT; raises rather than downgrades',
+          public_key: 'optional - unsupported recipient PKI key; raises on MQTT',
+          channel: 'optional - legacy value ignored; firmware hash is computed from selected name, key and mode',
           via: 'optional - value for via passed into send_text',
           text: 'optional - value for text passed into send_text'
         )
@@ -345,7 +350,11 @@ module Meshtastic
           root_topic: 'optional - value for root_topic passed into send_data',
           region: 'optional - value for region passed into send_data',
           topic: 'optional - value for topic passed into send_data',
-          channel: 'optional - value for channel passed into send_data',
+          channel_id: 'optional - exact PSK channel name; required for multiple keys',
+          psks: 'optional - channel names to Base64 keys or { psk: Base64, use_aead: true/false }',
+          pki_encrypted: 'optional - unsupported on MQTT; raises rather than downgrades',
+          public_key: 'optional - unsupported recipient PKI key; raises on MQTT',
+          channel: 'optional - legacy value ignored; firmware hash is computed from selected name, key and mode',
           via: 'optional - value for via passed into send_data'
         )
 

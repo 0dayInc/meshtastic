@@ -9,7 +9,7 @@ RSpec.describe Meshtastic::Admin::Config do
   end
 end
 
-describe Meshtastic::Admin::Config do
+module AdminConfigSpecHelpers
   def fake_serial_obj
     written = +''.b
     serial_conn = Object.new
@@ -28,6 +28,10 @@ describe Meshtastic::Admin::Config do
     body = frame.byteslice(4, (frame.getbyte(2) << 8) + frame.getbyte(3))
     Meshtastic::AdminMessage.decode(Meshtastic::ToRadio.decode(body).packet.decoded.payload)
   end
+end
+
+describe Meshtastic::Admin::Config do
+  include AdminConfigSpecHelpers
 
   it 'rejects legacy connection keys rather than silently filtering them' do
     %i[serial_obj bluetooth_obj tcp_obj mqtt_obj].each do |key|
@@ -122,6 +126,71 @@ describe Meshtastic::Admin::Config do
       expect(message.payload_variant).to eq(:get_config_request)
       expect(message.get_config_request).to eq(config_type)
     end
+  end
+end
+
+describe Meshtastic::Admin::Config, 'read-modify-readback helpers' do
+  include AdminConfigSpecHelpers
+
+  it 'updates signature policy with fresh correlated readback while preserving other security fields' do
+    current = Meshtastic::Config.new(security: { serial_enabled: true, public_key: 'k' * 32 })
+    handle = fake_serial_obj.merge(from_radio_queue: Queue.new, messages: [])
+    handle[:serial_conn].define_singleton_method(:write) do |bytes|
+      packet = Meshtastic::ToRadio.decode(bytes.byteslice(4..)).packet
+      message = Meshtastic::AdminMessage.decode(packet.decoded.payload)
+      handle[:messages] << message
+      if message.payload_variant == :get_config_request
+        payload = Meshtastic::AdminMessage.new(get_config_response: current).to_proto
+        data = Meshtastic::Data.new(portnum: :ADMIN_APP, request_id: packet.id, payload: payload)
+      else
+        current = Meshtastic::Config.decode(message.set_config.to_proto)
+        data = Meshtastic::Data.new(portnum: :ROUTING_APP, request_id: packet.id)
+      end
+      handle[:from_radio_queue] << Meshtastic::FromRadio.new(packet: Meshtastic::MeshPacket.new(from: packet.to, decoded: data))
+      bytes.bytesize
+    end
+    result = described_class.set_packet_signature_policy(transport_obj: handle, policy: :PACKET_SIGNATURE_POLICY_STRICT)
+    expect(current.security).to have_attributes(serial_enabled: true, public_key: 'k' * 32, packet_signature_policy: :PACKET_SIGNATURE_POLICY_STRICT)
+    expect(handle[:messages].map(&:payload_variant)).to eq(%i[get_config_request set_config get_config_request])
+    expect(result).to include(matched: true, reboot_requested: false)
+    expect(result[:acknowledgment][:delivery]).to eq(:acknowledged)
+    expect(result[:readback][:delivery]).to eq(:readback)
+  end
+
+  it 'sets local receive-only without resetting LoRa fields or issuing a reboot and reports mismatched readback' do
+    [true, false].each do |apply|
+      current = Meshtastic::Config.new(lora: { region: :US, hop_limit: 3, tx_enabled: true })
+      handle = fake_serial_obj.merge(from_radio_queue: Queue.new, messages: [])
+      handle[:serial_conn].define_singleton_method(:write) do |bytes|
+        packet = Meshtastic::ToRadio.decode(bytes.byteslice(4..)).packet
+        message = Meshtastic::AdminMessage.decode(packet.decoded.payload)
+        handle[:messages] << message
+        if message.payload_variant == :get_config_request
+          data = Meshtastic::Data.new(portnum: :ADMIN_APP, request_id: packet.id,
+                                      payload: Meshtastic::AdminMessage.new(get_config_response: current).to_proto)
+        else
+          current = message.set_config if apply
+          data = Meshtastic::Data.new(portnum: :ROUTING_APP, request_id: packet.id)
+        end
+        handle[:from_radio_queue] << Meshtastic::FromRadio.new(packet: Meshtastic::MeshPacket.new(from: packet.to, decoded: data))
+        bytes.bytesize
+      end
+      result = described_class.set_receive_only(transport_obj: handle, enabled: true)
+      expect(result).to include(matched: apply, reboot_requested: false)
+      expect(handle[:messages][1].set_config.lora).to have_attributes(region: :US, hop_limit: 3, tx_enabled: false)
+      expect(handle[:messages].map(&:payload_variant)).to eq(%i[get_config_request set_config get_config_request])
+    end
+  end
+
+  it 'rejects invalid policy and receive-only settings before any transmission' do
+    handle = fake_serial_obj
+    [99, nil, true, 'PACKET_SIGNATURE_POLICY_STRICT', :UNKNOWN].each do |policy|
+      expect { described_class.set_packet_signature_policy(transport_obj: handle, policy: policy) }.to raise_error(ArgumentError)
+    end
+    expect { described_class.set_receive_only(transport_obj: handle, enabled: 'true') }.to raise_error(ArgumentError)
+    expect { described_class.set_receive_only(transport_obj: handle, enabled: true, to: '!aabbccdd') }.to raise_error(ArgumentError, /local/)
+    expect { described_class.set_receive_only(transport_obj: MQTTClient.new, enabled: true) }.to raise_error(ArgumentError, /local/)
+    expect(handle[:written]).to be_empty
   end
 
   it 'prints usage without raising' do

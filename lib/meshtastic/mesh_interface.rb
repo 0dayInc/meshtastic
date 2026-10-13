@@ -113,14 +113,14 @@ module Meshtastic
     def get_cipher_keys(opts = {})
       psks = opts[:psks]
 
-      psks.each_key do |key|
-        psk = psks[key]
-        padded_psk = psk.ljust(psk.length + ((4 - (psk.length % 4)) % 4), '=')
-        replaced_psk = padded_psk.gsub('-', '+').gsub('_', '/')
-        psks[key] = replaced_psk
-      end
+      psks.to_h do |name, value|
+        entry = value.is_a?(Hash) ? value.dup : { psk: value }
+        psk = entry[:psk]
+        raise ArgumentError, 'PSK must be a Base64 string' unless psk.is_a?(String)
 
-      psks
+        entry[:psk] = psk.tr('-_', '+/').ljust(psk.length + ((4 - (psk.length % 4)) % 4), '=')
+        [name, value.is_a?(Hash) ? entry : entry[:psk]]
+      end
     rescue StandardError => e
       raise e
     end
@@ -212,6 +212,8 @@ module Meshtastic
     #   psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: "AQ==" })'
     # )
     def send_packet(opts = {})
+      raise ArgumentError, 'use_aead belongs inside each psks channel record' if opts.key?(:use_aead)
+
       mesh_packet = opts[:mesh_packet]
       from = opts[:from] ||= '!00000b0b'
       # from_hex = from.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if from.is_a?(String)
@@ -245,6 +247,9 @@ module Meshtastic
       # my_info = Meshtastic::FromRadio.my_info
       # wait_connected if to != my_info.my_node_num && my_info.is_a(Meshtastic::Deviceonly::MyInfo)
 
+      raise ArgumentError, 'MQTT does not support recipient public_key PKI encryption' if via == :mqtt && opts[:public_key] && !opts[:pki_encrypted]
+      raise ArgumentError, 'MQTT direct text requires unsupported PKI encryption; use a radio transport' if via == :mqtt && to != 0xffffffff && mesh_packet.decoded&.portnum == :TEXT_MESSAGE_APP
+
       mesh_packet.from = from
       mesh_packet.to = to
       mesh_packet.channel = channel
@@ -258,26 +263,24 @@ module Meshtastic
         raise ArgumentError, 'recipient public_key must contain 32 bytes' unless mesh_packet.public_key.bytesize == 32
       end
 
-      # When psks is nil/empty, leave the packet decoded so the radio (serial/TCP)
-      # device can apply the channel PSK itself. MQTT callers must pass psks so the
-      # ServiceEnvelope payload is pre-encrypted for the mesh.
+      # Select by exact name, never Hash insertion order when there are multiple keys.
+      selected_name = opts[:channel_id]&.to_s
       if psks && !psks.empty?
-        nonce_packet_id = [mesh_packet.id].pack('V').ljust(8, "\x00")
-        nonce_from_node = [from].pack('V').ljust(8, "\x00")
-        nonce = "#{nonce_packet_id}#{nonce_from_node}"
+        raise ArgumentError, 'Ambiguous duplicate channel names in psks' unless psks.keys.map(&:to_s).uniq.size == psks.size
 
-        psk = psks[psks.keys.first]
-        dec_psk = Base64.strict_decode64(psk)
-        cipher = OpenSSL::Cipher.new('AES-128-CTR')
-        cipher = OpenSSL::Cipher.new('AES-256-CTR') if dec_psk.length == 32
-        cipher.encrypt
-        cipher.key = dec_psk
-        cipher.iv = nonce
+        selected_name ||= psks.keys.first.to_s if psks.size == 1
+        raise ArgumentError, 'channel_id required for ambiguous PSKs' unless selected_name
+        raise ArgumentError, 'MQTT topic conflicts with selected channel_id' if via == :mqtt && opts[:topic] && opts[:topic].split('/')[-2] != selected_name
 
-        decrypted_payload = mesh_packet.decoded.to_proto
-        encrypted_payload = cipher.update(decrypted_payload) + cipher.final
+        psk = psks[selected_name] || psks[selected_name.to_sym]
+        raise ArgumentError, 'No PSK for selected channel_id' unless psk
 
-        mesh_packet.encrypted = encrypted_payload
+        config = channel_crypto(name: selected_name, value: psk)
+        mesh_packet.channel = config[:hash] if via == :mqtt
+        mesh_packet.encrypted = crypt_channel(config: config, message: mesh_packet.to_h,
+                                              bytes: mesh_packet.decoded.to_proto, encrypt: true)
+      elsif via == :mqtt
+        raise ArgumentError, 'MQTT requires an explicit channel PSK; plaintext fallback is disabled'
       end
       # puts mesh_packet.to_h
 
@@ -290,8 +293,7 @@ module Meshtastic
       when :mqtt
         service_envelope = Meshtastic::ServiceEnvelope.new
         service_envelope.packet = mesh_packet
-        # TODO: Add support for multiple PSKs by accepting channel_id
-        service_envelope.channel_id = psks.keys.first
+        service_envelope.channel_id = selected_name
         service_envelope.gateway_id = "!#{from.to_s(16).downcase}"
         send_to_mqtt(service_envelope: service_envelope)
       else
@@ -315,6 +317,8 @@ module Meshtastic
     #   psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: "AQ==" })'
     # )
     def send_data(opts = {})
+      raise ArgumentError, 'use_aead belongs inside each psks channel record' if opts.key?(:use_aead)
+
       # Send a text message to a node
       from = opts[:from] ||= '!00000b0b'
       # from_hex = from.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if from.is_a?(String)
@@ -366,6 +370,8 @@ module Meshtastic
         hop_limit: hop_limit,
         pki_encrypted: opts.fetch(:pki_encrypted, false),
         public_key: opts[:public_key],
+        channel_id: opts[:channel_id],
+        topic: opts[:topic],
         psks: psks
       )
     rescue StandardError => e
@@ -387,6 +393,8 @@ module Meshtastic
     #   psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: "AQ==" })'
     # )
     def send_text(opts = {})
+      raise ArgumentError, 'use_aead belongs inside each psks channel record' if opts.key?(:use_aead)
+
       # Send a text message to a node
       from = opts[:from] ||= '!00000b0b'
       # from_hex = from.delete('!').bytes.map { |b| b.to_s(16).rjust(2, '0') }.join if from.is_a?(String)
@@ -443,6 +451,10 @@ module Meshtastic
         hop_limit: hop_limit,
         port_num: port_num,
         on_response: on_response,
+        pki_encrypted: opts.fetch(:pki_encrypted, false),
+        public_key: opts[:public_key],
+        channel_id: opts[:channel_id],
+        topic: opts[:topic],
         psks: psks
       )
     rescue StandardError => e
@@ -544,10 +556,71 @@ module Meshtastic
 
     private :decode_application_payload
 
+    # Firmware v2.8.1.8e6a88d: Channels::generateHash and CryptoEngine CCM.
+    def channel_crypto(opts = {})
+      value = opts[:value]
+      entry = value.is_a?(Hash) ? value : { psk: value, use_aead: false }
+      raise ArgumentError, 'Channel records require psk and explicit use_aead only' unless entry.keys.sort == %i[psk use_aead]
+
+      aead = entry[:use_aead]
+      raise ArgumentError, 'use_aead must be true or false' unless [true, false].include?(aead)
+
+      encoded = entry[:psk]
+      raise ArgumentError, 'PSK must be a Base64 string' unless encoded.is_a?(String)
+
+      encoded = encoded.tr('-_', '+/').ljust(encoded.length + ((4 - (encoded.length % 4)) % 4), '=')
+      key = Base64.strict_decode64(encoded)
+      if key.bytesize == 1 && key.getbyte(0).positive?
+        index = key.getbyte(0)
+        key = Base64.strict_decode64('1PG7OiApB1nwvP+rz05pAQ==')
+        key.setbyte(15, (key.getbyte(15) + index - 1) & 0xff)
+      end
+      raise ArgumentError, 'PSK must contain 16 or 32 bytes (or a nonzero one-byte firmware alias)' unless [16, 32].include?(key.bytesize)
+
+      { key: key, aead: aead, hash: (opts[:name].to_s.bytes + key.bytes).reduce(0, :^) ^ (aead ? 0xae : 0) }
+    end
+
+    def crypt_channel(opts = {})
+      config = opts[:config]
+      message = opts[:message]
+      encrypt = opts[:encrypt]
+      bytes = opts[:bytes]
+      aead = config[:aead]
+      key = config[:key]
+      cipher = OpenSSL::Cipher.new("AES-#{key.bytesize * 8}-#{aead ? 'CCM' : 'CTR'}")
+      encrypt ? cipher.encrypt : cipher.decrypt
+      if aead
+        raise ArgumentError, 'Truncated AEAD ciphertext' if !encrypt && bytes.bytesize <= 12
+
+        cipher.iv_len = 13
+        cipher.auth_tag_len = 12
+        unless encrypt
+          cipher.auth_tag = bytes.byteslice(-12, 12)
+          bytes = bytes.byteslice(0, bytes.bytesize - 12)
+        end
+      end
+      cipher.key = key
+      nonce = [message.fetch(:id, 0), 0, message.fetch(:from, 0), 0].pack('V4')
+      cipher.iv = aead ? nonce.byteslice(0, 13) : nonce
+      if aead
+        cipher.ccm_data_len = bytes.bytesize
+        cipher.auth_data = [message.fetch(:from, 0), message.fetch(:to, 0)].pack('V2')
+      end
+      result = (bytes.empty? ? ''.b : cipher.update(bytes)) + cipher.final
+      result += cipher.auth_tag(12) if aead && encrypt
+      result
+    end
+
+    private :channel_crypto, :crypt_channel
+
     # Decode only the selected channel key; never reinterpret PKI as PSK crypto.
     # AES-CTR parsing is not authentication or proof of origin.
     def decrypt_packet(opts = {})
       message = opts[:message]
+      source = opts.fetch(:source, :radio)
+      reported = message.slice(:xeddsa_signed, :ack_proof_status)
+      message[:security_provenance] = { source: source, verification: source == :radio ? :device_reported : :untrusted, reported: reported }
+      reported.each_key { |key| message.delete(key) } unless source == :radio
       return message if message[:decoded] || !message.key?(:encrypted)
 
       if message[:pki_encrypted]
@@ -557,32 +630,29 @@ module Meshtastic
 
       channel = opts[:channel]
       psks = opts[:psks] || {}
+      raise ArgumentError, 'Ambiguous duplicate channel names in psks' unless psks.keys.map(&:to_s).uniq.size == psks.size
+
       psk = psks[channel] || psks[channel.to_s] || psks[channel.to_s.to_sym] unless channel.nil?
       if channel.nil?
         # Encrypted radio packets carry an eight-bit name/key XOR hash, not a slot.
         candidates = psks.select do |name, value|
-          bytes = Base64.strict_decode64(value)
-          [16, 32].include?(bytes.bytesize) && (name.to_s.bytes + bytes.bytes).reduce(0, :^) == message.fetch(:channel, 0)
+          channel_crypto(name: name, value: value)[:hash] == message.fetch(:channel, 0)
         rescue ArgumentError
           false
         end
-        psk = candidates.values.first if candidates.size == 1
+        channel, psk = candidates.first if candidates.size == 1
       end
       unless psk
         message[:decryption_error] = 'No PSK for the selected channel'
         return message
       end
 
-      key = Base64.strict_decode64(psk)
-      raise ArgumentError, 'PSK must contain 16 or 32 bytes' unless [16, 32].include?(key.bytesize)
+      config = channel_crypto(name: channel, value: psk)
+      raise ArgumentError, 'Channel hash does not match selected key and mode' if opts[:source] == :mqtt && config[:hash] != message.fetch(:channel, 0)
 
-      cipher = OpenSSL::Cipher.new(key.bytesize == 32 ? 'AES-256-CTR' : 'AES-128-CTR')
-      cipher.decrypt
-      cipher.key = key
-      cipher.iv = [message.fetch(:id, 0), 0, message.fetch(:from, 0), 0].pack('V4')
-      ciphertext = message[:encrypted]
-      plaintext = (ciphertext.empty? ? ''.b : cipher.update(ciphertext)) + cipher.final
+      plaintext = crypt_channel(config: config, message: message, bytes: message[:encrypted], encrypt: false)
       message[:decoded] = Meshtastic::Data.decode(plaintext).to_h
+      message[:security_provenance][:channel_authentication] = config[:aead] ? :aead : :none
       message[:encrypted] = :decrypted
       message
     rescue ArgumentError, OpenSSL::Cipher::CipherError, Google::Protobuf::ParseError
@@ -623,7 +693,10 @@ module Meshtastic
           channel: 'optional - Channel (Default: 0)',
           want_ack: 'optional - Want Acknowledgement (Default: false)',
           hop_limit: 'optional - Hop Limit (Default: 3)',
-          psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: \"AQ==\" })'
+          pki_encrypted: 'optional - radio-owned PKI; requires psks: nil and a 32-byte recipient public_key',
+          public_key: 'optional - raw recipient key forwarded to the radio without host encryption',
+          channel_id: 'optional - exact channel name; required when multiple PSKs are supplied',
+          psks: 'optional - names to Base64 keys or { psk: Base64, use_aead: true/false }; nil delegates to radio'
         )
 
         #{self}.send_data(
@@ -636,7 +709,10 @@ module Meshtastic
           want_ack: 'optional - Want Acknowledgement (Default: false)',
           hop_limit: 'optional - Hop Limit (Default: 3)',
           port_num: 'optional - (Default: Meshtastic::PortNum::PRIVATE_APP)',
-          psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: \"AQ==\" })'
+          pki_encrypted: 'optional - radio-owned PKI; requires psks: nil and a 32-byte recipient public_key',
+          public_key: 'optional - raw recipient key forwarded to the radio without host encryption',
+          channel_id: 'optional - exact channel name; required when multiple PSKs are supplied',
+          psks: 'optional - names to Base64 keys or { psk: Base64, use_aead: true/false }; nil delegates to radio'
         )
 
         #{self}.send_text(
@@ -650,7 +726,10 @@ module Meshtastic
           want_response: 'optional - Want Response (Default: false)',
           hop_limit: 'optional - Hop Limit (Default: 3)',
           on_response: 'optional - Callback on Response',
-          psks: 'optional - hash of :channel => psk key value pairs (default: { LongFast: \"AQ==\" })'
+          pki_encrypted: 'optional - radio-owned PKI; requires psks: nil and a 32-byte recipient public_key',
+          public_key: 'optional - raw recipient key forwarded to the radio without host encryption',
+          channel_id: 'optional - exact channel name; required when multiple PSKs are supplied',
+          psks: 'optional - names to Base64 keys or { psk: Base64, use_aead: true/false }; nil delegates to radio'
         )
 
         # Binary codecs: Unishox2, ATAK V1/V2, Forwarder, Reticulum and PayloadFormats.
@@ -664,7 +743,8 @@ module Meshtastic
 
         #{self}.decrypt_packet(
           message: 'required - decoded MeshPacket hash, updated in place',
-          psks: 'required - channel names mapped to full Base64 AES keys',
+          psks: 'required - names to Base64 keys or { psk: Base64, use_aead: true/false }',
+          source: 'optional - :radio (device reports) or :mqtt (untrusted broker claims)',
           channel: 'optional - exact MQTT channel name; omitted selects unique radio channel hash'
         )
 

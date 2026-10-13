@@ -47,7 +47,7 @@ JSON selection defaults (binary-specific differences are listed below):
 - `include_owner: true`: only `long_name`, `short_name`, `is_licensed`.
   Never clone User ID, MAC, hardware model, public key, role or messaging
   capability metadata. Role belongs to device configuration; security keys
-  belong to explicitly selected security configuration.
+  belong to security configuration (included in the default selection).
 - `config_types:` defaults to `DEVICE_CONFIG`, `POSITION_CONFIG`, `POWER_CONFIG`,
   `NETWORK_CONFIG`, `DISPLAY_CONFIG`, `LORA_CONFIG`, `BLUETOOTH_CONFIG`,
   `SECURITY_CONFIG`. Use a narrower list for firmware that lacks sections.
@@ -75,18 +75,94 @@ resolved or pinned. A disk write/sync failure raises and can leave a partial
 0600 file; it is never reported as a successful backup. File mode protection is
 not encryption and does not protect against privileged host access.
 
+## Restore safety policy (firmware v2.8.1.8e6a88d)
+
+Validation is pinned to firmware commit
+[`8e6a88d06f44cad26f1e8d7cd402939ccacb9b4c`](https://github.com/meshtastic/firmware/blob/8e6a88d06f44cad26f1e8d7cd402939ccacb9b4c/src/modules/AdminModule.cpp)
+and protobuf commit `8f97d66a63ce10cfb12f94203e361691647f5ad3`.
+The same semantic validator runs for Admin setters, JSON backups and binary
+profiles before session acquisition or writes. It rejects rather than truncates:
+
+- Owner long names over **24 UTF-8 bytes**, short names over four bytes, embedded
+  NULs and nonempty ASCII-whitespace-only names. Empty owner names mean unchanged
+  on this firmware, not clearing. The User license flag has no presence: an
+  omitted flag in an owner write is false, not a read/merge patch.
+- Ham callsigns must be nonblank and at most seven bytes; the optional suffix is
+  at most fourteen bytes and short name at most four. The composed `CALL//suffix`
+  is checked against 24 bytes. Blank nonempty optional names are rejected rather
+  than silently ignored.
+- Unknown enum values, including numeric values accepted by protobuf; channel
+  indexes outside 0–7, unknown roles, names of twelve or more bytes/NUL, and PSKs
+  other than 0, 1, 16 or 32 raw bytes. PRIMARY is allowed at any valid slot for
+  direct/JSON writes; binary URL ordering still requires primary slot zero.
+- Config/ModuleConfig without exactly one selected section. A selected empty
+  section such as `device: {}` remains valid and means protobuf defaults.
+  Sessionkey is request-only and UI requires the dedicated store operation.
+- Security keys other than zero or 32 bytes, or more than three admin keys.
+  Size validation does **not** authenticate a keypair or prove public/private
+  correspondence; firmware derives/normalizes identity state.
+
+**Compatibility change:** `identity_keys: :reject` is the import default. Any
+nonempty `security.private_key` **or** `security.public_key` causes rejection of
+an entire restore before radio I/O. Use `identity_keys: :restore` only when
+intentionally cloning/restoring that identity. It sends the exact input; there
+is no silent stripping, rewriting or `:preserve` mode. To leave security entirely
+untouched, remove the complete security record offline or omit it from export.
+Excluding the owner record/owner ID does **not** exclude security identity keys;
+SECURITY_CONFIG is part of the default export selection. Admin authorization
+keys are secret-bearing configuration too, but are not the node identity keypair.
+
+**Privacy opt-in:** `allow_privacy_changes: false` is the import default. Set it
+to `true` explicitly for any PositionConfig (even an empty/default section), fixed
+position, positive channel position precision, channel uplink, enabled MQTT,
+MQTT map reporting, or enabled telemetry broadcasts. In both JSON and binary
+profiles, any true TelemetryConfig flag below requires consent:
+
+- `device_telemetry_enabled`
+- `environment_measurement_enabled`
+- `air_quality_enabled`
+- `power_measurement_enabled`
+- `health_measurement_enabled`
+
+These flags match the pinned protobuf revision above and current generated
+descriptors. An empty/default telemetry section, false broadcast flags, nonzero
+intervals alone, and on-device screen/Fahrenheit preferences do not require
+telemetry consent. Disabling device mesh telemetry does not disable metrics sent
+to a connected client. This is a conservative restore guard, not a complete
+privacy assessment of every firmware module. It does not fetch existing state to infer
+whether a setting is already enabled. No values are silently disabled or
+redacted. The report warns that these settings may disclose location/traffic or
+device, environment, air quality, power and health metrics, without printing values,
+and firmware may clamp public-channel position precision. Both consent options
+are required for relevant **dry runs too**; neither changes the backup bytes.
+Direct Admin setters are explicit low-level writes and do not use these backup
+consent flags.
+
+Absent security private keys preserve an existing firmware keypair; they do not
+request an identity reset. Owner/license, LoRa region and security changes can
+migrate identity and change the node number; network/Bluetooth changes can break
+the connection. Reports expose `reconnect_required` conservatively for these
+sections and warn the caller to reconnect and rediscover the target. The importer
+does **not** reconnect, infer a new target, replay writes, or claim persisted
+state. Optional readback still uses the original connection/target and can fail
+after an identity change. `persistence_verified` always remains false. Verify
+all selected sections on a newly established connection before claiming durable
+restoration. Hardware/reconnect verification is outside this implementation.
+
 ## Validate, plan and import
 
 ```ruby
 plan = Meshtastic::Admin::Backup.import(
   transport_obj: connection,
   path: '/private/directory/node-backup.json',
+  allow_privacy_changes: true, # reviewed location/sharing restoration
   dry_run: true
 )
 
 result = Meshtastic::Admin::Backup.import(
   transport_obj: connection,
   backup: snapshot[:backup], # use exactly one of backup: or path:
+  allow_privacy_changes: true, # explicitly restore reviewed location/sharing
   edit_transaction: true,   # ONLY when target firmware supports it
   verify: true,
   timeout: 10
@@ -160,7 +236,8 @@ snapshot = Meshtastic::Admin::Backup.export(
 snapshot.slice(:status, :format, :count)
 # snapshot[:backup] is a raw ASCII-8BIT String, not JSON/base64 or a protobuf object.
 # Pass it directly to Backup.import(transport_obj: connection,
-#                                 backup: snapshot[:backup], dry_run: true).
+#                                 backup: snapshot[:backup], dry_run: true,
+#                                 allow_privacy_changes: true).
 ```
 
 Binary returns `{ status: :exported, format: :device_profile, count: Integer,
@@ -216,6 +293,7 @@ plan = Meshtastic::Admin::Backup.import(
   transport_obj: connection,
   path: '/private/directory/nodeConfig.cfg',
   format: :device_profile,
+  allow_privacy_changes: true, # if restoring reviewed position/sharing sections
   dry_run: true
 )
 # Only section/slot identities and counts are returned; no profile contents.
@@ -226,6 +304,7 @@ plan = Meshtastic::Admin::Backup.import(
   transport_obj: connection,
   backup: binary_profile_string,
   format: :device_profile,
+  allow_privacy_changes: true, # if restoring reviewed position/sharing sections
   dry_run: true
 )
 ```
@@ -291,7 +370,7 @@ no-replay, secret-handling and persistence limitations apply.
 ACK, sends each section once with a correlated ACK wait (or matching timeout
 readback as described below), then sends
 `commit_edit_settings` and waits again. Current upstream
-[AdminModule.cpp](https://github.com/meshtastic/firmware/blob/master/src/modules/AdminModule.cpp)
+[AdminModule.cpp](https://github.com/meshtastic/firmware/blob/8e6a88d06f44cad26f1e8d7cd402939ccacb9b4c/src/modules/AdminModule.cpp)
 implements a begin flag and commit save of configuration/module/device/channel/
 node database segments. Commit also disables Bluetooth. **This is not an atomic
 rollback facility**: firmware may apply values before commit, UI has its own

@@ -2,6 +2,8 @@
 
 **PhoneAPI XModem is not a firmware flashing protocol.** The old implementation incorrectly sent padded XModem data after an OTA admin request and could report completion without any device acknowledgement. That path is now rejected, including MQTT's former silent request-only `install`.
 
+For the exact **v2.8.1.8e6a88d** release, see the [migration checklist and installer matrix](admin-firmware-migration.md): firmware/protobuf pins, public-key identity continuity, backup/privacy consent, actual release-parser results and unsupported board families. Parser/loader success is not hardware verification.
+
 ## Supported operations
 
 | Operation | What the Ruby implementation actually does |
@@ -120,8 +122,9 @@ result = Meshtastic::Admin::Firmware.install(
   verify: {
     transport: :bluetooth,
     connection: { address: 'AA:BB:CC:DD:EE:FF', adapter: 'hci0' }, # application address
-    expected_version: '2.7.1.example', # exact version from your chosen release
-    expected_node: 0xaabbccdd,
+    expected_version: '2.8.1.8e6a88d', # exact intended release, including suffix
+    expected_public_key: trusted_pre_upgrade_public_key, # raw 32 bytes, never log
+    previous_node: 0xaabbccdd, # report mapping; not a strict post-reboot ID check
     timeout: 90
   }
 )
@@ -138,7 +141,8 @@ For tests or an alternative Ruby GATT implementation, unified BLE accepts `backe
 
 - Required: `transport: :tcp | :bluetooth | :serial`, `expected_version:` (exact nonempty String).
 - Production default: `connection:` Hash for a **new** application connection, explicitly specifying `host`, `address`, or `block_dev`, respectively. TCP uses PhoneAPI port **4403**, not updater port 3232; set `connection[:port]` only for a custom PhoneAPI port. Do not supply an existing socket/handle.
-- Optional: `expected_node:` numeric node ID, `timeout:` whole-operation deadline (60 seconds), `reboot_delay:` initial wait (3 seconds).
+- Optional: `expected_node:` strict post-reboot numeric node ID, `timeout:` whole-operation deadline (60 seconds), `reboot_delay:` initial wait (3 seconds).
+- Migration identity: `expected_public_key:` trusted pre-upgrade raw 32-byte public key adds a fresh source/request-correlated local owner readback. `previous_node:` requires this key expectation and reports old/new fixed-width node IDs and `node_changed`; it does not retarget another node. Both an explicit `expected_node` and key expectation must match if supplied together. No keys are returned/logged; key comparison is device-reported continuity, not cryptographic attestation. See the [2.8.1 migration guide](admin-firmware-migration.md).
 - Optional advanced `reconnect:` callable receives `{transport:, connection:, timeout:}` and must return a newly connected handle of the selected transport, with configuration requested. The verifier still waits for configuration and issues a fresh Admin metadata request; a callback cannot substitute a cached metadata Hash. The returned handle is closed afterward.
 - Pre-metadata connection/configuration I/O failures retry every 0.25 seconds within the total deadline. Metadata errors/version mismatches do not cause a reflash or get converted to success.
 - A fresh source/request-ID-matched `get_device_metadata_response` is required. Cached `handle[:metadata]`, configuration metadata, loader VERSION, a routing ACK or successful port open cannot satisfy verification.
