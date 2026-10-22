@@ -6,7 +6,7 @@ source 'https://rubygems.org'
 
 gemspec
 
-gem 'bundler', '>=4.0.22'
+gem 'bundler', '>=4.0.23'
 gem 'bundler-audit', '>=0.9.3'
 gem 'executable-hooks', '1.7.1'
 gem 'fiddle', '1.1.8'
@@ -18,7 +18,7 @@ gem 'mqtt', '0.7.0'
 gem 'rake', '13.4.2'
 gem 'rdoc', '7.0.4'
 gem 'rspec', '3.13.2'
-gem 'rubocop', '1.92.0'
+gem 'rubocop', '1.92.1'
 gem 'rubocop-rake', '0.7.1'
 gem 'rubocop-rspec', '3.10.2'
 gem 'ruby-dbus', '0.25.0'
