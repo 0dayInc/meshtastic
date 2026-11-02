@@ -1,5 +1,5 @@
 # frozen_string_literal: true
 
 module Meshtastic
-  VERSION = '0.0.191'
+  VERSION = '0.0.192'
 end
